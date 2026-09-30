@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+uvicorn.log
+cc_desktop.png
+cc_mobile.png

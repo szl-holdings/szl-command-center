@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SZL Command Center — Governed Business Observability</title>
+    <meta
+      name="description"
+      content="Mission control for the SZL estate. Every panel carries a truth state — VERIFIED, UNKNOWN, or UNAVAILABLE — and a receipt. No claim without evidence."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="gridlines" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg
+          class="mark"
+          viewBox="0 0 32 32"
+          width="30"
+          height="30"
+          fill="none"
+          stroke="currentColor"
+          aria-label="SZL Command Center radar mark"
+          role="img"
+        >
+          <circle cx="16" cy="16" r="13" stroke-width="1" opacity="0.4" />
+          <circle cx="16" cy="16" r="8.5" stroke-width="1" opacity="0.65" />
+          <circle cx="16" cy="16" r="4" stroke-width="1" />
+          <path d="M16 3v3M16 26v3M3 16h3M26 16h3" stroke-width="1" opacity="0.5" />
+          <g class="sweep">
+            <line x1="16" y1="16" x2="26.6" y2="9.4" stroke-width="1.5" />
+          </g>
+          <circle cx="20.5" cy="19.5" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+        <div class="brand-text">
+          <span class="brand-name">SZL COMMAND CENTER</span>
+          <span class="brand-sub">GOVERNED BUSINESS OBSERVABILITY</span>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <span id="poll-state" class="chip chip-gray" data-testid="status-poll">BOOT</span>
+        <span id="clock" class="clock mono" data-testid="text-clock">---------- --:--:-- UTC</span>
+      </div>
+    </header>
+
+    <section class="strip" id="strip" aria-label="Estate status strip">
+      <div class="cell cell-ratio">
+        <span class="cell-label">ESTATE VERIFIED</span>
+        <span class="cell-value mono" id="strip-ratio" data-testid="text-verified-ratio">
+          <span class="skel skel-num"></span>
+        </span>
+        <span class="ratio-bar" aria-hidden="true"><span id="ratio-fill"></span></span>
+      </div>
+      <div class="cell">
+        <span class="cell-label">ESTATE STATE</span>
+        <span class="cell-value" id="strip-state"><span class="skel skel-chip"></span></span>
+      </div>
+      <div class="cell">
+        <span class="cell-label">OPEN ISSUES · ORG</span>
+        <span class="cell-value mono" id="strip-issues" data-testid="text-open-issues">
+          <span class="skel skel-num"></span>
+        </span>
+      </div>
+      <div class="cell">
+        <span class="cell-label">FLAGSHIP HEAD · a11oy</span>
+        <span class="cell-value mono" id="strip-head" data-testid="text-flagship-head">
+          <span class="skel skel-num"></span>
+        </span>
+      </div>
+      <div class="cell">
+        <span class="cell-label">LAST REFRESH</span>
+        <span class="cell-value mono" id="strip-refresh">—</span>
+        <span class="cell-sub">CACHE 60s · POLL 30s</span>
+      </div>
+    </section>
+
+    <main class="board">
+      <section class="panel span-12" aria-labelledby="h-verticals">
+        <header class="panel-head">
+          <h2 id="h-verticals">VERTICALS</h2>
+          <div class="panel-head-side">
+            <span class="chip chip-gray" id="chip-verticals" data-testid="status-verticals">SYNC</span>
+          </div>
+        </header>
+        <div class="verticals" id="verticals">
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+        </div>
+        <footer class="panel-foot mono" id="foot-verticals"></footer>
+      </section>
+
+      <section class="panel span-7" aria-labelledby="h-feed">
+        <header class="panel-head">
+          <h2 id="h-feed">GOVERNANCE FEED</h2>
+          <span class="chip chip-gray" id="chip-feed" data-testid="status-feed">SYNC</span>
+        </header>
+        <div class="feed" id="feed">
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+        </div>
+        <footer class="panel-foot mono" id="foot-feed"></footer>
+      </section>
+
+      <section class="panel span-5" aria-labelledby="h-domains">
+        <header class="panel-head">
+          <h2 id="h-domains">DOMAINS</h2>
+          <span class="chip chip-gray" id="chip-domains" data-testid="status-domains">SYNC</span>
+        </header>
+        <div class="domains" id="domains">
+          <span class="skel skel-line"></span>
+          <span class="skel skel-line"></span>
+          <span class="skel skel-block"></span>
+        </div>
+        <footer class="panel-foot mono" id="foot-domains"></footer>
+      </section>
+
+      <section class="panel span-12" aria-labelledby="h-receipts">
+        <header class="panel-head">
+          <h2 id="h-receipts">RECEIPTS — LATEST SELF-AUDIT</h2>
+          <span class="chip chip-gray" id="chip-receipts" data-testid="status-receipts">SYNC</span>
+        </header>
+        <div class="receipts" id="receipts">
+          <span class="skel skel-block"></span>
+          <span class="skel skel-block"></span>
+          <span class="skel skel-block"></span>
+        </div>
+        <footer class="panel-foot mono" id="foot-receipts"></footer>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span class="foot-law">NO CLAIM WITHOUT EVIDENCE — VERIFIED / UNKNOWN / UNAVAILABLE</span>
+      <span class="mono">a-11-oy.com · a11oy.net · github.com/szl-holdings</span>
+    </footer>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
