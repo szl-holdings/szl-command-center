@@ -1,0 +1,205 @@
+{
+  "generated_at": "2026-09-30T23:27:07Z",
+  "cache_ttl_seconds": 60,
+  "summary": {
+    "panels_total": 5,
+    "panels_verified": 1,
+    "verified_ratio": 0.2,
+    "estate_state": "UNKNOWN",
+    "states": {
+      "github": "UNAVAILABLE",
+      "huggingface": "UNAVAILABLE",
+      "cloudflare": "UNAVAILABLE",
+      "dns": "VERIFIED",
+      "receipts": "UNKNOWN"
+    }
+  },
+  "collectors": {
+    "github": {
+      "value": {
+        "org": "szl-holdings",
+        "open_issues": {
+          "value": null,
+          "truth_state": "UNAVAILABLE",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "gh search issues --owner szl-holdings --state open",
+          "reason": "HTTP 401: (https://git-agent-proxy.perplexity.ai/api/v3/search/issues?page=1&per_page=100&q=state%3Aopen+type%3Aissue+user%3Aszl-holdings)"
+        },
+        "flagship": {
+          "repo": "a11oy",
+          "runs": {
+            "value": null,
+            "truth_state": "UNAVAILABLE",
+            "verified_at": "2026-09-30T23:27:06Z",
+            "evidence_ref": "gh run list --repo szl-holdings/a11oy --limit 5",
+            "reason": "failed to get runs: HTTP 401 (https://git-agent-proxy.perplexity.ai/api/v3/repos/szl-holdings/a11oy/actions/runs?per_page=5&exclude_pull_requests=true)"
+          },
+          "head": {
+            "value": null,
+            "truth_state": "UNAVAILABLE",
+            "verified_at": "2026-09-30T23:27:07Z",
+            "evidence_ref": "gh api /repos/szl-holdings/a11oy/commits/main",
+            "reason": "gh: HTTP 401"
+          }
+        }
+      },
+      "truth_state": "UNAVAILABLE",
+      "verified_at": "2026-09-30T23:27:07Z",
+      "evidence_ref": "gh CLI (org search + run list + commits API)",
+      "reason": "HTTP 401: (https://git-agent-proxy.perplexity.ai/api/v3/search/issues?page=1&per_page=100&q=state%3Aopen+type%3Aissue+user%3Aszl-holdings); failed to get runs: HTTP 401 (https://git-agent-proxy.perple"
+    },
+    "huggingface": {
+      "value": null,
+      "truth_state": "UNAVAILABLE",
+      "verified_at": "2026-09-30T23:27:06Z",
+      "evidence_ref": "https://api.huggingface.co/api/spaces?author=szlholdings (+/api/models)",
+      "reason": "no HF token in environment; set one of HF_TOKEN, HUGGING_FACE_HUB_TOKEN, HUGGINGFACE_HUB_TOKEN, HUGGINGFACE_TOKEN, HF_API_TOKEN \u2014 UNAVAILABLE per Zero-Bandaid Law, never a guess"
+    },
+    "cloudflare": {
+      "value": null,
+      "truth_state": "UNAVAILABLE",
+      "verified_at": "2026-09-30T23:27:06Z",
+      "evidence_ref": "https://api.cloudflare.com/client/v4/zones",
+      "reason": "no Cloudflare token in environment; set one of CLOUDFLARE_API_TOKEN, CF_API_TOKEN, CLOUDFLARE_TOKEN \u2014 UNAVAILABLE per Zero-Bandaid Law, never a guess"
+    },
+    "dns": {
+      "value": {
+        "a-11-oy.com": {
+          "value": {
+            "domain": "a-11-oy.com",
+            "dnssec": "SECURE",
+            "ds_records": [
+              ";; missing question section"
+            ],
+            "ns_records": [
+              ";; missing question section"
+            ]
+          },
+          "truth_state": "VERIFIED",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "dig +short DS a-11-oy.com (+NS)"
+        },
+        "a11oy.net": {
+          "value": {
+            "domain": "a11oy.net",
+            "dnssec": "SECURE",
+            "ds_records": [
+              ";; missing question section"
+            ],
+            "ns_records": [
+              ";; missing question section"
+            ]
+          },
+          "truth_state": "VERIFIED",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "dig +short DS a11oy.net (+NS)"
+        }
+      },
+      "truth_state": "VERIFIED",
+      "verified_at": "2026-09-30T23:27:06Z",
+      "evidence_ref": "dig +short DS/NS via system resolver"
+    },
+    "receipts": {
+      "value": {
+        "verification": {
+          "value": {
+            "verdict": "INCOMPLETE",
+            "checks": [
+              {
+                "state": "PASS",
+                "check": "bundle",
+                "detail": "bundle_type szl.dev/GovernedActionBundle/v1"
+              },
+              {
+                "state": "PASS",
+                "check": "structure[0]",
+                "detail": "predicate structurally valid (szl.dev/GovernedAction/v1)"
+              },
+              {
+                "state": "PASS",
+                "check": "receipt[0]",
+                "detail": "receipt envelope fields valid"
+              },
+              {
+                "state": "PASS",
+                "check": "law3-natural-person[0]",
+                "detail": "actor.is_service_account is false"
+              },
+              {
+                "state": "PASS",
+                "check": "integrity[0]",
+                "detail": "canonical JSON -> SHA-256 matches recorded hash"
+              },
+              {
+                "state": "INCOMPLETE",
+                "check": "law4-evidence[0]",
+                "detail": "predicate declares completeness INCOMPLETE \u2014 verdict capped at INCOMPLETE"
+              },
+              {
+                "state": "PASS",
+                "check": "redaction[0",
+                "detail": "rc-operator-account]: recomputed SHA-256(salt||0x00||plaintext) matches commitment for $.evidence[ev-live-inventory].operator"
+              },
+              {
+                "state": "INCOMPLETE",
+                "check": "honest-time[0]",
+                "detail": "weak time proof (rfc3161_token recorded as UNAVAILABLE; ntp_synced is False, not true) \u2014 disclosed, never hidden; verdict capped at INCOMPLETE"
+              },
+              {
+                "state": "PASS",
+                "check": "signature[0]",
+                "detail": "Ed25519 signature over DSSE PAE verifies"
+              },
+              {
+                "state": "PASS",
+                "check": "chain",
+                "detail": "single receipt; no chain to check"
+              }
+            ]
+          },
+          "truth_state": "VERIFIED",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "python3 [workspace] [workspace]"
+        },
+        "bundle": {
+          "value": {
+            "bundle_id": "bundle-self-audit-e90e3457-b3a9-4f95-acd6-2d2b07984a42",
+            "bundle_type": "szl.dev/GovernedActionBundle/v1",
+            "created_at": "2026-08-30T23:18:29.174804Z",
+            "receipt_id": "rcpt-self-audit-440cedba-390b-4ef3-b755-85f0df9c1ead",
+            "decision": "ALLOW",
+            "side_effect_class": "READ_ONLY",
+            "evidence_obligations": [
+              "spaces-audit-report",
+              "demo-harness-log",
+              "hf-spaces-inventory"
+            ],
+            "retention_days": 180,
+            "action_type": "estate.self_audit",
+            "completeness": "INCOMPLETE",
+            "chain_sequence": 1,
+            "verifier_note": "Verify offline with: python3 ../a11oy_verify.py self_audit_bundle.json (expected verdict: INCOMPLETE \u2014 that is the truth state of this audit, not a defect of the receipt)"
+          },
+          "truth_state": "VERIFIED",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "[workspace]"
+        },
+        "master_demo_state": {
+          "value": null,
+          "truth_state": "UNAVAILABLE",
+          "verified_at": "2026-09-30T23:27:06Z",
+          "evidence_ref": "[workspace] (demo state)",
+          "reason": "no demo state JSON present under payloads/01-master \u2014 state absent, reported not blank"
+        }
+      },
+      "truth_state": "UNKNOWN",
+      "verified_at": "2026-09-30T23:27:06Z",
+      "evidence_ref": "payloads/05-verifier (reference verifier + self-audit bundle)",
+      "reason": "no demo state JSON present under payloads/01-master \u2014 state absent, reported not blank"
+    }
+  },
+  "_snapshot_meta": {
+    "baked_at": "2026-09-30T23:30Z",
+    "note": "Baked snapshot for the published build \u2014 collectors run live in dev; published sandbox has no estate credentials by design."
+  }
+}

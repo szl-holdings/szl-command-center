@@ -15,6 +15,7 @@ Run:  uvicorn backend.main:app --port 8000
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
@@ -80,14 +81,50 @@ def _estate() -> dict:
     }
 
 
+def _snapshot(name: str) -> dict | None:
+    """Published build: without estate credentials by design, serve the baked,
+    dated snapshot instead of empty UNAVAILABLE panels. Zero-Bandaid still holds —
+    the payload declares itself as a snapshot (see _snapshot_meta)."""
+    path = os.path.join(os.path.dirname(__file__), "snapshot", f"{name}.json")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["_served_from"] = "baked-snapshot"
+        return data
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _live_or_snapshot(name: str, producer) -> JSONResponse:
+    payload = producer()
+    collectors = payload.get("collectors") if isinstance(payload, dict) else None
+    if collectors is not None:
+        github_env = collectors.get("github") or {}
+        gh_state = github_env.get("truth_state")
+        if gh_state != "VERIFIED":  # core panel down = credentialess sandbox: serve the baked estate view
+            snap = _snapshot(name)
+            if snap is not None:
+                payload = snap
+    return JSONResponse(payload)
+
+
 @app.get("/api/estate")
 def api_estate() -> JSONResponse:
-    return JSONResponse(_cached("estate", _estate))
+    return _live_or_snapshot("estate", lambda: _cached("estate", _estate))
 
 
 @app.get("/api/verticals")
 def api_verticals() -> JSONResponse:
-    return JSONResponse(_cached("verticals", verticals_mod.collect))
+    payload = _cached("verticals", verticals_mod.collect)
+    snap = _snapshot("verticals")
+    try:
+        if snap is not None and payload.get("verticals") and all(
+            v.get("truth_state") in ("UNAVAILABLE", "UNKNOWN") for v in payload["verticals"].values()
+        ):
+            payload = snap
+    except AttributeError:
+        pass
+    return JSONResponse(payload)
 
 
 @app.get("/api/health")

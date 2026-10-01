@@ -613,8 +613,15 @@
 
   /* ---------- fetch / orchestrate ---------- */
 
+  // Deploy-preview support: at deploy time "__PORT_8000__" is rewritten to a proxy
+  // URL for the sandbox backend. In dev (uvicorn serving /) relative URLs work as-is.
+  function apiBase() {
+    var h = window.location.host || "";
+    return h.indexOf(":8000") !== -1 ? "" : "__PORT_8000__";
+  }
+
   function fetchJson(path) {
-    return fetch(path, { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) {
+    return fetch(apiBase() + path, { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     });
