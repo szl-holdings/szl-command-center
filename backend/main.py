@@ -117,13 +117,13 @@ def api_estate() -> JSONResponse:
 def api_verticals() -> JSONResponse:
     payload = _cached("verticals", verticals_mod.collect)
     snap = _snapshot("verticals")
-    try:
-        if snap is not None and payload.get("verticals") and all(
-            v.get("truth_state") in ("UNAVAILABLE", "UNKNOWN") for v in payload["verticals"].values()
-        ):
-            payload = snap
-    except AttributeError:
-        pass
+    verticals = payload.get("verticals") if isinstance(payload, dict) else None
+    if snap is not None and isinstance(verticals, list) and verticals and all(
+        isinstance(vertical, dict)
+        and vertical.get("truth_state") in ("UNAVAILABLE", "UNKNOWN")
+        for vertical in verticals
+    ):
+        payload = snap
     return JSONResponse(payload)
 
 
