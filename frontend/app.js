@@ -158,7 +158,14 @@
     var left = document.createElement('span');
     left.className = 'vrepo-name';
     var latest = repo.latest_run || {};
-    left.appendChild(runDot(latest.conclusion, latest.status));
+    var rollup = repo.workflow_rollup || {};
+    var dotConclusion = latest.conclusion;
+    var dotStatus = latest.status;
+    if (rollup.ci === 'failure') {
+      dotConclusion = 'failure';
+      dotStatus = 'completed';
+    }
+    left.appendChild(runDot(dotConclusion, dotStatus));
     var name = document.createElement('span');
     name.textContent = repo.repo;
     var meta = repo.meta || {};
@@ -188,6 +195,12 @@
 
     var titles = [];
     if (latest.workflowName) titles.push(latest.workflowName + ' → ' + (latest.conclusion || latest.status || '?'));
+    if (rollup && rollup.failing_workflows && rollup.failing_workflows.length) {
+      titles.push('failing workflows: ' + rollup.failing_workflows.join(', '));
+    }
+    if (rollup && rollup.protected_merge_readiness === false) {
+      titles.push('not protected-merge readiness');
+    }
     if (meta.reason) titles.push('meta: ' + meta.reason);
     if (repo.ci && repo.ci.reason) titles.push('ci: ' + repo.ci.reason);
     if (titles.length) row.title = titles.join(' | ');
@@ -344,12 +357,24 @@
         hd.appendChild(nm);
         var lead = document.createElement('span');
         lead.className = 'lead';
-        lead.textContent = 'latest CI conclusions';
+        lead.textContent = 'observed CI — not merge readiness';
         hd.appendChild(lead);
         host.appendChild(hd);
         withRuns.forEach(function (r) {
           host.appendChild(feedRow(r.latest_run, r.repo, now));
           anyRows = true;
+          var failing = (r.workflow_rollup && r.workflow_rollup.failing_workflows) || [];
+          failing.forEach(function (name) {
+            if (r.latest_run && r.latest_run.workflowName === name && r.latest_run.conclusion === 'failure') {
+              return;
+            }
+            host.appendChild(feedRow({
+              workflowName: name,
+              conclusion: 'failure',
+              status: 'completed',
+              updatedAt: (r.latest_run && r.latest_run.updatedAt) || ''
+            }, r.repo, now));
+          });
         });
       });
     }

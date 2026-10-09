@@ -52,45 +52,74 @@ VERTICALS = [
 
 
 def _repo_state(repo: str, issues_by_repo: dict | None) -> dict:
-    """One repo row: metadata envelope + latest-CI envelope + issue count."""
+    """One repo row: metadata, one push-window page, and a per-workflow roll-up."""
     meta = github.repo_meta(repo)
-    runs = github.ci_runs(repo, limit=3)
-    latest = None
-    if runs["truth_state"] == "VERIFIED" and runs["value"]:
-        latest = runs["value"][0]
+    meta_value = meta.get("value") or {}
+    archived = meta["truth_state"] == "VERIFIED" and bool(meta_value.get("archived"))
+    branch = meta_value.get("default_branch") or "main"
+    head = github.repo_head(repo, branch) if not archived else None
+    current_head = None
+    if head and head["truth_state"] == "VERIFIED":
+        current_head = (head.get("value") or {}).get("sha")
+    observed = github.workflow_observation(
+        repo,
+        branch,
+        current_head=current_head,
+        archived=archived,
+    )
+    observed_value = observed.get("value") or {}
+    runs = observed_value.get("runs") or []
+    latest = runs[0] if observed["truth_state"] == "VERIFIED" and runs else None
+    rollup = observed_value.get("rollup") or github.summarize_workflow_window(
+        [], archived=archived
+    )
     issues = None
     if issues_by_repo is not None:
         issues = issues_by_repo.get(repo, 0)
-    states = [meta["truth_state"], runs["truth_state"]]
+    states = [meta["truth_state"], observed["truth_state"]]
+    if head is not None:
+        states.append(head["truth_state"])
     return {
         "repo": repo,
         "truth_state": roll_up(states),
         "meta": meta,
-        "ci": runs,
+        "head": head,
+        "ci": observed,
         "latest_run": latest,
+        "workflow_rollup": rollup,
         "open_issues": issues,
     }
 
 
 def _health(repos: list) -> str:
-    """Vertical health from latest CI conclusions.
+    """Health from the latest observed run of each workflow.
 
-    ok       — every repo with runs is green, none failing.
-    degraded — at least one latest run failed.
-    unknown  — no CI conclusions observed at all.
+    A newer green run of one workflow does not hide another workflow's
+    failure. An incomplete collection window is not ok. ok is not
+    protected-merge readiness.
     """
-    conclusions = [
-        (r["latest_run"] or {}).get("conclusion")
-        for r in repos
-        if r.get("latest_run")
-    ]
-    if not conclusions:
-        return "unknown"
-    if any(c == "failure" for c in conclusions):
+    states = []
+    incomplete = False
+    for repo in repos:
+        meta_value = ((repo.get("meta") or {}).get("value") or {})
+        rollup = repo.get("workflow_rollup") or {}
+        if meta_value.get("archived") is True or rollup.get("ci") == "archived":
+            states.append("archived")
+            continue
+        if rollup.get("window_complete") is not True:
+            incomplete = True
+        head_env = repo.get("head")
+        if isinstance(head_env, dict) and head_env.get("truth_state") != "VERIFIED":
+            incomplete = True
+        states.append(rollup.get("ci") or "unknown")
+    active = [state for state in states if state != "archived"]
+    if states and not active:
+        return "archived"
+    if any(state == "failure" for state in active):
         return "degraded"
-    if all(c == "success" for c in conclusions):
-        return "ok"
-    return "unknown"
+    if incomplete or not active or any(state != "success" for state in active):
+        return "unknown"
+    return "ok"
 
 
 def collect() -> dict:
@@ -132,7 +161,8 @@ def collect() -> dict:
                 "last_push": last_push,
             },
             state,
-            "gh api /repos + gh run list per repo; gh search issues org-wide",
+            "gh api repos, commits, and one page of default-branch push runs; "
+            "latest run per workflow; not protected-merge readiness",
         )
         if state != "VERIFIED":
             reasons = {
