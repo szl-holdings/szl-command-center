@@ -638,11 +638,11 @@
 
   /* ---------- fetch / orchestrate ---------- */
 
-  // Deploy-preview support: at deploy time "__PORT_8000__" is rewritten to a proxy
-  // URL for the sandbox backend. In dev (uvicorn serving /) relative URLs work as-is.
+  // Optional deploy-preview rewrite to a proxy URL. Unmodified source uses the
+  // same origin on every port, including HTTPS reverse proxies.
   function apiBase() {
-    var h = window.location.host || "";
-    return h.indexOf(":8000") !== -1 ? "" : "__PORT_8000__";
+    var configured = "__PORT_8000__";
+    return configured.indexOf("__PORT_") === 0 ? "" : configured;
   }
 
   function fetchJson(path) {
@@ -675,22 +675,32 @@
       : '';
   }
 
+  function renderUnavailablePanel(id, endpoint, reason) {
+    var host = el(id);
+    clear(host);
+    host.appendChild(errBlock('CURRENT OBSERVATION UNAVAILABLE', reason, endpoint));
+    var replacement = chip('UNAVAILABLE');
+    replacement.id = 'chip-' + id;
+    el(replacement.id).replaceWith(replacement);
+    setFoot('foot-' + id, { evidence_ref: endpoint, reason: reason });
+  }
+
   function refresh() {
     var results = { estate: false, verticals: false };
+    var errors = {};
     var estateP = fetchJson('/api/estate').then(function (d) {
       lastEstate = d;
       results.estate = true;
     }).catch(function (e) {
       lastEstate = null;
-      el('strip-ratio').textContent = '—';
-      setFoot('foot-feed', { evidence_ref: '/api/estate', reason: String(e) });
+      errors.estate = String(e);
     });
     var vertP = fetchJson('/api/verticals').then(function (d) {
       lastVerticals = d;
       results.verticals = true;
     }).catch(function (e) {
       lastVerticals = null;
-      setFoot('foot-verticals', { evidence_ref: '/api/verticals', reason: String(e) });
+      errors.verticals = String(e);
     });
 
     return Promise.allSettled([estateP, vertP]).then(function () {
@@ -703,39 +713,29 @@
         setFoot('foot-feed', lastEstate.collectors ? lastEstate.collectors.github : null);
         setFoot('foot-domains', lastEstate.collectors ? lastEstate.collectors.cloudflare : null);
         setFoot('foot-receipts', lastEstate.collectors ? lastEstate.collectors.receipts : null);
+      } else {
+        ['feed', 'domains', 'receipts'].forEach(function (id) {
+          renderUnavailablePanel(id, '/api/estate', errors.estate);
+        });
+        ['strip-ratio', 'strip-issues', 'strip-head', 'strip-refresh'].forEach(function (id) {
+          el(id).textContent = '—';
+        });
+        el('ratio-fill').style.width = '0%';
+        clear(el('strip-state'));
+        el('strip-state').appendChild(chip('UNAVAILABLE'));
       }
       if (lastVerticals) {
         renderVerticals(lastVerticals);
         setFoot('foot-verticals', lastVerticals.issues_scan);
+      } else {
+        renderUnavailablePanel('verticals', '/api/verticals', errors.verticals);
       }
       renderPanelChips();
       if (results.estate || results.verticals) {
         var partial = !(results.estate && results.verticals);
         setPoll(partial ? 'UNKNOWN' : 'VERIFIED', partial ? 'one endpoint unreachable' : null);
       } else {
-        setPoll('UNAVAILABLE', 'backend unreachable — last known state retained');
-        if (lastEstate) {
-          renderStrip(lastEstate, lastVerticals);
-          renderFeed(lastEstate, lastVerticals);
-          renderDomains(lastEstate);
-          renderReceipts(lastEstate);
-        } else {
-          ['feed', 'domains', 'receipts'].forEach(function (id) {
-            var host = el(id);
-            clear(host);
-            host.appendChild(errBlock('BACKEND UNREACHABLE', 'no data has ever been observed — this panel refuses to render blank', '/api/estate'));
-          });
-          ['strip-ratio', 'strip-issues', 'strip-head'].forEach(function (id) {
-            el(id).textContent = '—';
-          });
-        }
-        if (lastVerticals) {
-          renderVerticals(lastVerticals);
-        } else {
-          var vh = el('verticals');
-          clear(vh);
-          vh.appendChild(errBlock('BACKEND UNREACHABLE', 'no vertical data ever observed — reported, not blank', '/api/verticals'));
-        }
+        setPoll('UNAVAILABLE', 'current observations unavailable');
       }
     });
   }
