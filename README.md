@@ -39,6 +39,15 @@ One command, no docker-compose. Open <http://localhost:8000>.
 
 Responses are cached 60s in-memory; the frontend polls every 30s.
 
+When live GitHub collection is unavailable or uncertain, dated baked evidence
+may appear under `_historical_snapshot` in the API response. Current collector
+states, failure reasons and timestamps remain authoritative for the dashboard;
+historical evidence never replaces them or contributes to its verified count.
+
+Offline route and rendering checks: install `requirements-dev.txt`, then run
+`python -m unittest discover -s tests -v` and
+`node --test tests/test_snapshot_display.cjs` (Node 20 or newer).
+
 ## Collectors
 
 Every collector returns

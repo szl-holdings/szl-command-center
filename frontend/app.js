@@ -661,6 +661,20 @@
     c.replaceWith(repl);
   }
 
+  function renderSnapshotNotice() {
+    var notice = el('snapshot-notice');
+    var historical = [];
+    [[lastEstate, 'estate'], [lastVerticals, 'verticals']].forEach(function (entry) {
+      var snap = entry[0] && entry[0]._historical_snapshot;
+      if (snap) historical.push(entry[1] + ': ' + (snap.generated_at || 'date unavailable'));
+    });
+    notice.hidden = historical.length === 0;
+    notice.textContent = historical.length
+      ? 'Live collection is degraded. Historical snapshots (' + historical.join('; ') +
+        ') are available in the API response and are not used for current status.'
+      : '';
+  }
+
   function refresh() {
     var results = { estate: false, verticals: false };
     var estateP = fetchJson('/api/estate').then(function (d) {
@@ -680,6 +694,7 @@
     });
 
     return Promise.allSettled([estateP, vertP]).then(function () {
+      renderSnapshotNotice();
       if (lastEstate) {
         renderStrip(lastEstate, lastVerticals);
         renderFeed(lastEstate, lastVerticals);
