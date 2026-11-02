@@ -27,6 +27,7 @@ VERIFY_TIMEOUT = 45
 
 CHECK_LINE = re.compile(r"^\[(PASS|INCOMPLETE|FAIL|UNVERIFIED[A-Z_]*)\s*\]\s+(.+)$")
 FINAL_LINE = re.compile(r"^FINAL:\s*(PASS|INCOMPLETE|FAIL)\s*$")
+FINAL_EXIT_CODES = {"PASS": 0, "FAIL": 1, "INCOMPLETE": 2}
 
 
 def _run_verifier() -> dict:
@@ -44,7 +45,7 @@ def _run_verifier() -> dict:
         )
         output = (proc.stdout or "") + (proc.stderr or "")
         checks = []
-        verdict = None
+        verdicts = []
         for line in output.splitlines():
             m = CHECK_LINE.match(line.strip())
             if m:
@@ -55,12 +56,38 @@ def _run_verifier() -> dict:
                 continue
             f = FINAL_LINE.match(line.strip())
             if f:
-                verdict = f.group(1)
-        if verdict is None:
+                verdicts.append(f.group(1))
+        if not verdicts:
             return unknown(
                 {"checks": checks},
                 ref,
                 "verifier produced no FINAL verdict line — output unrecognized",
+            )
+        if len(verdicts) != 1:
+            return unknown(
+                {
+                    "checks": checks,
+                    "reported_verdicts": verdicts,
+                    "returncode": proc.returncode,
+                },
+                ref,
+                "verifier produced multiple FINAL verdict lines — output ambiguous",
+            )
+        verdict = verdicts[0]
+        expected_returncode = FINAL_EXIT_CODES[verdict]
+        if proc.returncode != expected_returncode:
+            return unknown(
+                {
+                    "checks": checks,
+                    "reported_verdict": verdict,
+                    "returncode": proc.returncode,
+                    "expected_returncode": expected_returncode,
+                },
+                ref,
+                (
+                    f"verifier FINAL {verdict} disagrees with exit status "
+                    f"{proc.returncode}; expected {expected_returncode}"
+                ),
             )
         return verified({"verdict": verdict, "checks": checks}, ref)
     except Exception as exc:  # noqa: BLE001
