@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI
@@ -26,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import verticals as verticals_mod
+from .cache import ResponseCache
 from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
 
@@ -38,20 +37,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-_cache: dict = {}
-_cache_lock = threading.Lock()
+_response_cache = ResponseCache(CACHE_TTL)
 
 
 def _cached(key: str, producer):
-    now = time.monotonic()
-    with _cache_lock:
-        hit = _cache.get(key)
-        if hit and now - hit["at"] < CACHE_TTL:
-            return hit["payload"]
-    payload = producer()
-    with _cache_lock:
-        _cache[key] = {"at": now, "payload": payload}
-    return payload
+    return _response_cache.get(key, producer)
 
 
 def _estate() -> dict:
