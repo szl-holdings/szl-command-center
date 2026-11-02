@@ -20,8 +20,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Install application dependencies
-        run: python -m pip install -r requirements.txt
-      - name: Verify route fallback without provider access
+      - name: Install application and HTTP test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verify current observations and historical context without provider access
         run: python -m unittest discover -s tests -v
+      - name: Verify historical evidence does not promote the displayed status
+        run: node --test tests/test_snapshot_display.cjs
 

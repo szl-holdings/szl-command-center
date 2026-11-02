@@ -82,9 +82,7 @@ def _estate() -> dict:
 
 
 def _snapshot(name: str) -> dict | None:
-    """Published build: without estate credentials by design, serve the baked,
-    dated snapshot instead of empty UNAVAILABLE panels. Zero-Bandaid still holds —
-    the payload declares itself as a snapshot (see _snapshot_meta)."""
+    """Load dated historical context; never substitute it for live evidence."""
     path = os.path.join(os.path.dirname(__file__), "snapshot", f"{name}.json")
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -101,10 +99,12 @@ def _live_or_snapshot(name: str, producer) -> JSONResponse:
     if collectors is not None:
         github_env = collectors.get("github") or {}
         gh_state = github_env.get("truth_state")
-        if gh_state != "VERIFIED":  # core panel down = credentialess sandbox: serve the baked estate view
+        if gh_state != "VERIFIED":
             snap = _snapshot(name)
             if snap is not None:
-                payload = snap
+                # Keep current failures, timestamps and other collectors intact.
+                # Do not mutate the shared cached payload.
+                payload = {**payload, "_historical_snapshot": snap}
     return JSONResponse(payload)
 
 
@@ -123,7 +123,7 @@ def api_verticals() -> JSONResponse:
         and vertical.get("truth_state") in ("UNAVAILABLE", "UNKNOWN")
         for vertical in verticals
     ):
-        payload = snap
+        payload = {**payload, "_historical_snapshot": snap}
     return JSONResponse(payload)
 
 

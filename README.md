@@ -38,6 +38,19 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/health` | Liveness                                                                 |
 
 Responses are cached 60s in-memory; the frontend polls every 30s.
+The frontend uses same-origin API paths on any port or HTTPS reverse proxy.
+Preview publishers may replace the `__PORT_8000__` marker with their backend
+proxy URL. A failed poll clears the affected panel's previous status and shows
+the current error; the other endpoint's successful observation stays visible.
+
+When live GitHub collection is unavailable or uncertain, dated baked evidence
+may appear under `_historical_snapshot` in the API response. Current collector
+states, failure reasons and timestamps remain authoritative for the dashboard;
+historical evidence never replaces them or contributes to its verified count.
+
+Offline route and rendering checks: install `requirements-dev.txt`, then run
+`python -m unittest discover -s tests -v` and
+`node --test tests/test_snapshot_display.cjs` (Node 20 or newer).
 
 ## Collectors
 
