@@ -104,3 +104,21 @@ frontend/
   app.js               fetch → render → poll(30s); skeletons/error/empty states
   favicon.svg          radar-ring mark
 ```
+
+## Response caching and failure recovery
+
+Responses are cached in memory for 60 seconds **from collection completion**;
+the frontend polls every 30 seconds. Concurrent misses for the same endpoint
+share one collection per server process. Estate and verticals can collect
+independently. Collector truth-state envelopes keep their existing schema and
+observation timestamps.
+
+An unexpected producer exception releases all waiting callers and imposes a
+60-second retry backoff from failure completion. Expired payloads are neither
+returned nor renewed by a failed refresh. Ordinary `UNAVAILABLE`/`UNKNOWN`
+collector envelopes remain valid cached observations. Snapshot handling remains
+the responsibility of each route. The cache does not add a global
+collector deadline or a cross-process limit: requests may wait for the in-flight
+collection, and each Uvicorn worker has its own cache.
+
+Offline cache regressions: `python -m unittest discover -s tests -p test_response_cache.py -v`.
