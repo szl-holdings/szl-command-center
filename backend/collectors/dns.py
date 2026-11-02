@@ -1,18 +1,39 @@
-"""DNS collector — subprocess `dig` against public resolvers.
+"""DNS collector — subprocess `dig` against the system resolver.
 
-Public data, no token required. DS records at the parent prove the
-DNSSEC chain of trust; their absence means unsigned (UNKNOWN), and a
-failed dig means UNAVAILABLE. States are reported, never assumed.
+Public data, no token required. Well-formed DS/NS records are observations,
+not DNSSEC chain validation. Empty answers also leave DNSSEC UNKNOWN.
+Failed commands or malformed answers are UNAVAILABLE.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 
-from .base import clip, envelope, roll_up, unavailable, unknown, verified
+from .base import clip, envelope, roll_up, unavailable, unknown
 
 DOMAINS = ("a-11-oy.com", "a11oy.net")
 DIG_TIMEOUT = 10
+
+
+def _valid_record(record: str, rtype: str) -> bool:
+    if rtype == "DS":
+        fields = record.split()
+        if len(fields) != 4 or not all(re.fullmatch(r"[0-9]+", x) for x in fields[:3]):
+            return False
+        key_tag, algorithm, digest_type = map(int, fields[:3])
+        return (
+            0 <= key_tag <= 65535
+            and 1 <= algorithm <= 255
+            and 1 <= digest_type <= 255
+            and len(fields[3]) % 2 == 0
+            and re.fullmatch(r"[0-9a-fA-F]+", fields[3]) is not None
+        )
+    if rtype == "NS":
+        return len(record) <= 254 and re.fullmatch(
+            r"(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+", record
+        ) is not None
+    return False
 
 
 def _dig(domain: str, rtype: str) -> list:
@@ -24,7 +45,10 @@ def _dig(domain: str, rtype: str) -> list:
     )
     if out.returncode != 0:
         raise RuntimeError(clip(out.stderr.strip() or f"dig exit {out.returncode}"))
-    return sorted(line.strip() for line in out.stdout.splitlines() if line.strip())
+    records = sorted(line.strip() for line in out.stdout.splitlines() if line.strip())
+    if any(not _valid_record(record, rtype) for record in records):
+        raise RuntimeError(f"malformed {rtype} response from dig")
+    return records
 
 
 def _domain(domain: str) -> dict:
@@ -34,14 +58,12 @@ def _domain(domain: str) -> dict:
     try:
         ds = _dig(domain, "DS")
         ns = _dig(domain, "NS")
-        dnssec = "SECURE" if ds else "UNSIGNED"
-        value = {"domain": domain, "dnssec": dnssec, "ds_records": ds, "ns_records": ns}
-        if ds:
-            return verified(value, ref)
+        value = {"domain": domain, "dnssec": "UNKNOWN", "ds_records": ds, "ns_records": ns}
         return unknown(
             value,
             ref,
-            f"no DS records at parent for {domain} — zone is unsigned or not yet delegated with DNSSEC",
+            "DS records observed, but DNSSEC chain not validated"
+            if ds else "no DS records observed; DNSSEC chain not validated",
         )
     except Exception as exc:  # noqa: BLE001
         return unavailable(ref, clip(exc))
