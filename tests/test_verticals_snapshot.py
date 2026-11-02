@@ -1,4 +1,4 @@
-"""Offline checks for the verticals route's documented snapshot fallback."""
+"""Offline checks for the verticals route's historical snapshot context."""
 
 import json
 import unittest
@@ -16,20 +16,29 @@ class VerticalsSnapshotTests(unittest.TestCase):
             response = main.api_verticals()
         return json.loads(response.body), payload
 
-    def test_all_unavailable_uses_the_declared_snapshot(self):
+    def test_all_unavailable_preserves_live_state_with_historical_context(self):
         snapshot = {"verticals": [], "_served_from": "baked-snapshot", "observed_at": "fixture"}
-        response, _ = self.response_for(["UNAVAILABLE", "UNAVAILABLE"], snapshot)
-        self.assertEqual(response, snapshot)
+        response, payload = self.response_for(["UNAVAILABLE", "UNAVAILABLE"], snapshot)
+        self.assertEqual(response["verticals"], payload["verticals"])
+        self.assertEqual(response["source"], "live")
+        self.assertEqual(response["_historical_snapshot"], snapshot)
+        self.assertNotIn("_historical_snapshot", payload)
 
-    def test_all_unknown_uses_the_declared_snapshot(self):
+    def test_all_unknown_preserves_live_state_with_historical_context(self):
         snapshot = {"verticals": [], "_served_from": "baked-snapshot"}
-        response, _ = self.response_for(["UNKNOWN"], snapshot)
-        self.assertEqual(response, snapshot)
+        response, payload = self.response_for(["UNKNOWN"], snapshot)
+        self.assertEqual(response["verticals"], payload["verticals"])
+        self.assertEqual(response["source"], "live")
+        self.assertEqual(response["_historical_snapshot"], snapshot)
+        self.assertNotIn("_historical_snapshot", payload)
 
-    def test_mixed_unknown_and_unavailable_uses_the_declared_snapshot(self):
+    def test_mixed_unknown_and_unavailable_preserves_live_state(self):
         snapshot = {"verticals": [], "_served_from": "baked-snapshot"}
-        response, _ = self.response_for(["UNKNOWN", "UNAVAILABLE"], snapshot)
-        self.assertEqual(response, snapshot)
+        response, payload = self.response_for(["UNKNOWN", "UNAVAILABLE"], snapshot)
+        self.assertEqual(response["verticals"], payload["verticals"])
+        self.assertEqual(response["source"], "live")
+        self.assertEqual(response["_historical_snapshot"], snapshot)
+        self.assertNotIn("_historical_snapshot", payload)
 
     def test_a_verified_vertical_keeps_the_live_observation(self):
         response, payload = self.response_for(
