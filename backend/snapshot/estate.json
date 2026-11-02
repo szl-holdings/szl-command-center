@@ -3,14 +3,14 @@
   "cache_ttl_seconds": 60,
   "summary": {
     "panels_total": 5,
-    "panels_verified": 1,
-    "verified_ratio": 0.2,
+    "panels_verified": 0,
+    "verified_ratio": 0.0,
     "estate_state": "UNKNOWN",
     "states": {
       "github": "UNAVAILABLE",
       "huggingface": "UNAVAILABLE",
       "cloudflare": "UNAVAILABLE",
-      "dns": "VERIFIED",
+      "dns": "UNAVAILABLE",
       "receipts": "UNKNOWN"
     }
   },
@@ -65,39 +65,24 @@
     "dns": {
       "value": {
         "a-11-oy.com": {
-          "value": {
-            "domain": "a-11-oy.com",
-            "dnssec": "SECURE",
-            "ds_records": [
-              ";; missing question section"
-            ],
-            "ns_records": [
-              ";; missing question section"
-            ]
-          },
-          "truth_state": "VERIFIED",
+          "value": null,
+          "truth_state": "UNAVAILABLE",
           "verified_at": "2026-09-30T23:27:06Z",
-          "evidence_ref": "dig +short DS a-11-oy.com (+NS)"
+          "evidence_ref": "dig +short DS a-11-oy.com (+NS)",
+          "reason": "Stored DNS output was diagnostic text, not resource records; no fresh query was made."
         },
         "a11oy.net": {
-          "value": {
-            "domain": "a11oy.net",
-            "dnssec": "SECURE",
-            "ds_records": [
-              ";; missing question section"
-            ],
-            "ns_records": [
-              ";; missing question section"
-            ]
-          },
-          "truth_state": "VERIFIED",
+          "value": null,
+          "truth_state": "UNAVAILABLE",
           "verified_at": "2026-09-30T23:27:06Z",
-          "evidence_ref": "dig +short DS a11oy.net (+NS)"
+          "evidence_ref": "dig +short DS a11oy.net (+NS)",
+          "reason": "Stored DNS output was diagnostic text, not resource records; no fresh query was made."
         }
       },
-      "truth_state": "VERIFIED",
+      "truth_state": "UNAVAILABLE",
       "verified_at": "2026-09-30T23:27:06Z",
-      "evidence_ref": "dig +short DS/NS via system resolver"
+      "evidence_ref": "dig +short DS/NS via system resolver",
+      "reason": "Stored DNS output was diagnostic text, not resource records; no fresh query was made."
     },
     "receipts": {
       "value": {

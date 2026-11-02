@@ -2,7 +2,7 @@
 
 Public data, no token required. Well-formed DS/NS records are observations,
 not DNSSEC chain validation. Empty answers also leave DNSSEC UNKNOWN.
-Failed commands or malformed answers are UNAVAILABLE.
+Failed commands and malformed or unsupported answers are UNAVAILABLE.
 """
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from .base import clip, envelope, roll_up, unavailable, unknown
 
 DOMAINS = ("a-11-oy.com", "a11oy.net")
 DIG_TIMEOUT = 10
+# Hex lengths for the supported DS digests: RFC 4034 §5.1.4,
+# RFC 4509 §2.1 and RFC 6605 §2. This is format validation only.
+DS_DIGEST_HEX_LENGTHS = {1: 40, 2: 64, 4: 96}
 
 
 def _valid_record(record: str, rtype: str) -> bool:
@@ -25,8 +28,8 @@ def _valid_record(record: str, rtype: str) -> bool:
         return (
             0 <= key_tag <= 65535
             and 1 <= algorithm <= 255
-            and 1 <= digest_type <= 255
-            and len(fields[3]) % 2 == 0
+            and digest_type in DS_DIGEST_HEX_LENGTHS
+            and len(fields[3]) == DS_DIGEST_HEX_LENGTHS[digest_type]
             and re.fullmatch(r"[0-9a-fA-F]+", fields[3]) is not None
         )
     if rtype == "NS":
@@ -47,7 +50,7 @@ def _dig(domain: str, rtype: str) -> list:
         raise RuntimeError(clip(out.stderr.strip() or f"dig exit {out.returncode}"))
     records = sorted(line.strip() for line in out.stdout.splitlines() if line.strip())
     if any(not _valid_record(record, rtype) for record in records):
-        raise RuntimeError(f"malformed {rtype} response from dig")
+        raise RuntimeError(f"malformed or unsupported {rtype} response from dig")
     return records
 
 

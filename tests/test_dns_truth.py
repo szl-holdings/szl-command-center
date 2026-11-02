@@ -51,6 +51,30 @@ class DnsTruthTests(unittest.TestCase):
         self.assertEqual(result["value"]["dnssec"], "UNKNOWN")
         self.assertIn("not validated", result["reason"])
 
+    def test_supported_digest_lengths_preserve_records_without_validating_chain(self):
+        for digest_type, octets in ((1, 20), (2, 32), (4, 48)):
+            with self.subTest(digest_type=digest_type):
+                record = f"2371 13 {digest_type} " + "Ab" * octets
+                result = self.observe(ds=record)
+                self.assertEqual(result["truth_state"], "UNKNOWN")
+                self.assertEqual(result["value"]["ds_records"], [record])
+                self.assertEqual(result["value"]["dnssec"], "UNKNOWN")
+
+    def test_truncated_and_extended_supported_digests_are_unavailable(self):
+        for digest_type, octets in ((1, 20), (2, 32), (4, 48)):
+            for length in (1, octets - 1, octets + 1):
+                with self.subTest(digest_type=digest_type, octets=length):
+                    result = self.observe(ds=f"2371 13 {digest_type} " + "AB" * length)
+                    self.assertEqual(result["truth_state"], "UNAVAILABLE")
+                    self.assertIsNone(result["value"])
+
+    def test_unsupported_digest_types_do_not_become_observations(self):
+        for digest_type in (3, 5, 6, 7, 253, 254, 255):
+            with self.subTest(digest_type=digest_type):
+                result = self.observe(ds=f"2371 13 {digest_type} " + "AB" * 32)
+                self.assertEqual(result["truth_state"], "UNAVAILABLE")
+                self.assertIsNone(result["value"])
+
     def test_empty_ds_is_unknown_not_proof_of_unsigned_zone(self):
         result = self.observe(ds="")
         self.assertEqual(result["truth_state"], "UNKNOWN")
