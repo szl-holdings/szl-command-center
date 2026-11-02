@@ -652,6 +652,36 @@
     });
   }
 
+  function isRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function isTruthState(value) {
+    return value === 'VERIFIED' || value === 'UNKNOWN' || value === 'UNAVAILABLE';
+  }
+
+  // Check the envelope required by the renderer before accepting an observation.
+  // This does not attest the provider's claims or replace collector validation.
+  function validEstate(value) {
+    if (!isRecord(value) || !isRecord(value.summary) || !isRecord(value.collectors)) return false;
+    var sum = value.summary;
+    return isTruthState(sum.estate_state) &&
+      Number.isInteger(sum.panels_total) && sum.panels_total >= 0 &&
+      Number.isInteger(sum.panels_verified) && sum.panels_verified >= 0 &&
+      sum.panels_verified <= sum.panels_total &&
+      ['github', 'dns', 'cloudflare', 'receipts'].every(function (name) {
+        var env = value.collectors[name];
+        return isRecord(env) && isTruthState(env.truth_state);
+      });
+  }
+
+  function validVerticals(value) {
+    return isRecord(value) && Array.isArray(value.verticals) &&
+      value.verticals.every(function (vertical) {
+        return isRecord(vertical) && isTruthState(vertical.truth_state);
+      });
+  }
+
   function setPoll(state, detail) {
     var c = el('poll-state');
     var repl = chip(state);
@@ -689,6 +719,7 @@
     var results = { estate: false, verticals: false };
     var errors = {};
     var estateP = fetchJson('/api/estate').then(function (d) {
+      if (!validEstate(d)) throw new Error('Invalid estate response');
       lastEstate = d;
       results.estate = true;
     }).catch(function (e) {
@@ -696,6 +727,7 @@
       errors.estate = String(e);
     });
     var vertP = fetchJson('/api/verticals').then(function (d) {
+      if (!validVerticals(d)) throw new Error('Invalid verticals response');
       lastVerticals = d;
       results.verticals = true;
     }).catch(function (e) {
@@ -766,7 +798,7 @@
     }
     if (lastVerticals) {
       var states = lastVerticals.verticals.map(function (v) { return v.truth_state; });
-      var all = states.every(function (s) { return s === 'VERIFIED'; })
+      var all = states.length === 0 ? 'UNKNOWN' : states.every(function (s) { return s === 'VERIFIED'; })
         ? 'VERIFIED'
         : states.every(function (s) { return s === 'UNAVAILABLE'; })
           ? 'UNAVAILABLE'

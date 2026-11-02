@@ -47,6 +47,10 @@ async function render(estate, verticals, options = {}) {
   return { ids, requests, async pollFailures(names) {
     failed = new Set(names);
     await poll();
+  }, async pollPayload(name, payload) {
+    if (name === 'estate') estate = payload;
+    else verticals = payload;
+    await poll();
   } };
 }
 
@@ -141,5 +145,36 @@ test('total outage clears all previously verified status', async () => {
   await browser.pollFailures(['estate', 'verticals']);
   for (const id of ['chip-feed', 'chip-domains', 'chip-receipts', 'chip-verticals', 'strip-state', 'poll-state']) {
     assert.equal(browser.ids.get(id).textContent, 'UNAVAILABLE', id);
+  }
+});
+
+
+test('empty vertical list is UNKNOWN and never vacuously VERIFIED', async () => {
+  const browser = await render(...healthyFixture());
+  await browser.pollPayload('verticals', { verticals: [] });
+  assert.equal(browser.ids.get('chip-verticals').textContent, 'UNKNOWN');
+  assert.match(browser.ids.get('verticals').textContent, /NO VERTICALS/);
+});
+
+test('malformed estate responses clear previously verified estate state', async () => {
+  const [healthy] = healthyFixture();
+  for (const malformed of [null, [], {}, { ...healthy, summary: null }, { ...healthy, collectors: {} }]) {
+    const browser = await render(...healthyFixture());
+    await browser.pollPayload('estate', malformed);
+    assert.equal(browser.ids.get('chip-feed').textContent, 'UNAVAILABLE');
+    assert.equal(browser.ids.get('strip-state').textContent, 'UNAVAILABLE');
+    assert.equal(browser.ids.get('strip-ratio').textContent, '—');
+    assert.match(browser.ids.get('feed').textContent, /Invalid estate response/);
+    assert.equal(browser.ids.get('chip-verticals').textContent, 'VERIFIED');
+  }
+});
+
+test('malformed vertical responses clear previously verified vertical state', async () => {
+  for (const malformed of [null, {}, { verticals: {} }, { verticals: [null] }, { verticals: [{truth_state: 'GREEN'}] }]) {
+    const browser = await render(...healthyFixture());
+    await browser.pollPayload('verticals', malformed);
+    assert.equal(browser.ids.get('chip-verticals').textContent, 'UNAVAILABLE');
+    assert.match(browser.ids.get('verticals').textContent, /Invalid verticals response/);
+    assert.equal(browser.ids.get('chip-feed').textContent, 'VERIFIED');
   }
 });
