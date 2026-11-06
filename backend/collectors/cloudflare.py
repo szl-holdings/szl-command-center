@@ -13,7 +13,7 @@ import os
 
 import requests
 
-from .base import clip, envelope, roll_up, unavailable, verified, exc_kind
+from .base import CollectorUnavailable, envelope, failure_reason, roll_up, unavailable, verified
 
 API = "https://api.cloudflare.com/client/v4"
 TIMEOUT = 15
@@ -36,11 +36,20 @@ def _get(path: str, token: str, params: dict | None = None) -> dict:
         headers={"Authorization": f"Bearer {token}"},
         timeout=TIMEOUT,
     )
-    resp.raise_for_status()
+    # Reasons carry status and error codes, never the request URL or API messages.
+    if resp.status_code >= 400:
+        raise CollectorUnavailable(f"Cloudflare API returned HTTP {resp.status_code}")
     body = resp.json()
     if not body.get("success"):
-        errors = body.get("errors") or []
-        raise RuntimeError(clip("; ".join(str(e.get("message")) for e in errors) or "API error"))
+        codes = sorted(
+            {
+                e["code"]
+                for e in body.get("errors") or []
+                if isinstance(e, dict) and type(e.get("code")) is int
+            }
+        )
+        detail = f" (error codes {', '.join(map(str, codes))})" if codes else ""
+        raise CollectorUnavailable(f"Cloudflare API reported failure{detail}")
     return body
 
 
@@ -69,7 +78,7 @@ def _zone(zone_name: str, token: str) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def collect() -> dict:

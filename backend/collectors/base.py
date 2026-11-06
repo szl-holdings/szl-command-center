@@ -20,6 +20,7 @@ UNAVAILABLE — the evidence source itself could not be reached
 from __future__ import annotations
 
 import datetime
+import subprocess
 from typing import Any, Optional
 
 VERIFIED = "VERIFIED"
@@ -86,6 +87,20 @@ def reason_of(env: dict) -> str:
     return env.get("reason") or "no reason recorded"
 
 
+class CollectorUnavailable(RuntimeError):
+    """An expected collector failure whose message is safe to serve.
+
+    Collectors raise it with wording they compose themselves: fixed text plus
+    numbers such as an exit or HTTP status code. Never pass stderr, response
+    bodies, URLs or another exception's text into it; ``failure_reason``
+    serves the message to every viewer of the page.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 def exc_kind(exc: BaseException) -> str:
     """Public-safe description of a failure: the exception class only.
 
@@ -93,6 +108,20 @@ def exc_kind(exc: BaseException) -> str:
     reaches the page payload (CodeQL py/stack-trace-exposure).
     """
     return type(exc).__name__
+
+
+def failure_reason(exc: BaseException) -> str:
+    """Why an observation failed, without echoing exception text.
+
+    Collector-composed reasons pass through, so a failure still degrades to
+    UNAVAILABLE with the reason (CANON Law 1); a timeout reports its limit.
+    Anything else is named by its class only (``exc_kind``).
+    """
+    if isinstance(exc, CollectorUnavailable):
+        return exc.reason
+    if isinstance(exc, subprocess.TimeoutExpired) and isinstance(exc.timeout, (int, float)):
+        return f"timed out after {exc.timeout:g}s"
+    return exc_kind(exc)
 
 
 def clip(text: str, limit: int = 180) -> str:

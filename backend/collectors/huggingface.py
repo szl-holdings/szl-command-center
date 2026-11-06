@@ -10,7 +10,7 @@ import os
 
 import requests
 
-from .base import clip, envelope, unavailable, verified, exc_kind
+from .base import CollectorUnavailable, failure_reason, unavailable, verified
 
 ORG = "szlholdings"
 API = "https://api.huggingface.co"
@@ -39,7 +39,9 @@ def _count(path: str, token: str) -> int:
         headers={"Authorization": f"Bearer {token}"},
         timeout=TIMEOUT,
     )
-    resp.raise_for_status()
+    # The reason carries the status code, never the request URL.
+    if resp.status_code >= 400:
+        raise CollectorUnavailable(f"Hugging Face API returned HTTP {resp.status_code}")
     return len(resp.json())
 
 
@@ -67,4 +69,4 @@ def collect() -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
