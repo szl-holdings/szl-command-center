@@ -23,7 +23,7 @@
           "truth_state": "UNAVAILABLE",
           "verified_at": "2026-09-30T23:27:06Z",
           "evidence_ref": "gh search issues --owner szl-holdings --state open",
-          "reason": "HTTP 401: (https://git-agent-proxy.perplexity.ai/api/v3/search/issues?page=1&per_page=100&q=state%3Aopen+type%3Aissue+user%3Aszl-holdings)"
+          "reason": "HTTP 401: ([proxy URL redacted])"
         },
         "flagship": {
           "repo": "a11oy",
@@ -32,7 +32,7 @@
             "truth_state": "UNAVAILABLE",
             "verified_at": "2026-09-30T23:27:06Z",
             "evidence_ref": "gh run list --repo szl-holdings/a11oy --limit 5",
-            "reason": "failed to get runs: HTTP 401 (https://git-agent-proxy.perplexity.ai/api/v3/repos/szl-holdings/a11oy/actions/runs?per_page=5&exclude_pull_requests=true)"
+            "reason": "failed to get runs: HTTP 401 ([proxy URL redacted])"
           },
           "head": {
             "value": null,
@@ -46,7 +46,7 @@
       "truth_state": "UNAVAILABLE",
       "verified_at": "2026-09-30T23:27:07Z",
       "evidence_ref": "gh CLI (org search + run list + commits API)",
-      "reason": "HTTP 401: (https://git-agent-proxy.perplexity.ai/api/v3/search/issues?page=1&per_page=100&q=state%3Aopen+type%3Aissue+user%3Aszl-holdings); failed to get runs: HTTP 401 (https://git-agent-proxy.perple"
+      "reason": "HTTP 401: ([proxy URL redacted]); failed to get runs: HTTP 401 ([proxy URL redacted]"
     },
     "huggingface": {
       "value": null,

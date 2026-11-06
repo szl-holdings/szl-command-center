@@ -23,6 +23,7 @@ from backend.collectors import base, cloudflare, dns, github, huggingface, recei
 # Stands in for what upstream text can carry: a resolver address, a proxy host
 # and a credential-shaped token.
 LEAK = "LEAK 10.255.0.53 https://proxy.internal.example/v3?token=ghp_SENTINEL"
+SNAPSHOT_DIR = os.path.join(os.path.dirname(main.__file__), "snapshot")
 
 
 def gh_result(returncode, stderr=""):
@@ -35,6 +36,19 @@ def http_response(status, body=b"{}"):
     resp.url = "https://api.example/" + LEAK
     resp._content = body
     return resp
+
+
+def served_reasons(node, path=""):
+    """Every `reason` string in a JSON document, with its path."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "reason" and isinstance(value, str):
+                yield f"{path}/{key}", value
+            else:
+                yield from served_reasons(value, f"{path}/{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from served_reasons(value, f"{path}/{index}")
 
 
 class FailureReasonTests(unittest.TestCase):
@@ -251,6 +265,26 @@ class ServedPayloadTests(unittest.TestCase):
             self.assertEqual(vertical["truth_state"], "UNAVAILABLE")
             self.assertEqual(vertical["reason"], "gh CLI not found on PATH")
         self.assertNotIn("LEAK", body)
+
+    def test_served_reasons_carry_no_urls_including_historical_snapshot(self):
+        # evidence_ref names the source; a reason only says why it failed.
+        for route in (main.api_estate, main.api_verticals):
+            with self.subTest(route=route.__name__):
+                payload = json.loads(self.request(route).body)
+                self.assertIn("_historical_snapshot", payload)
+                leaked = [path for path, reason in served_reasons(payload) if "://" in reason]
+                self.assertEqual(leaked, [])
+
+
+class CommittedSnapshotTests(unittest.TestCase):
+    def test_baked_reasons_carry_no_urls(self):
+        for name in ("estate.json", "verticals.json"):
+            with self.subTest(snapshot=name):
+                with open(os.path.join(SNAPSHOT_DIR, name), encoding="utf-8") as fh:
+                    snapshot = json.load(fh)
+                reasons = list(served_reasons(snapshot))
+                self.assertTrue(reasons)
+                self.assertEqual([path for path, reason in reasons if "://" in reason], [])
 
 
 if __name__ == "__main__":
