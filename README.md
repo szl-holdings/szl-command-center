@@ -122,3 +122,5 @@ collector deadline or a cross-process limit: requests may wait for the in-flight
 collection, and each Uvicorn worker has its own cache.
 
 Offline cache regressions: `python -m unittest discover -s tests -p test_response_cache.py -v`.
+
+Estate on Hugging Face: models, datasets and Spaces are published under the [SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS) org.
