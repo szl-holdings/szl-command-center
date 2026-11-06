@@ -10,7 +10,7 @@ import os
 
 import requests
 
-from .base import clip, envelope, unavailable, verified
+from .base import clip, envelope, unavailable, verified, exc_kind
 
 ORG = "szlholdings"
 API = "https://api.huggingface.co"
@@ -67,4 +67,4 @@ def collect() -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))

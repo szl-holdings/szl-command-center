@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 
-from .base import clip, envelope, roll_up, unavailable, unknown
+from .base import clip, envelope, roll_up, unavailable, unknown, exc_kind
 
 DOMAINS = ("a-11-oy.com", "a11oy.net")
 DIG_TIMEOUT = 10
@@ -69,7 +69,7 @@ def _domain(domain: str) -> dict:
             if ds else "no DS records observed; DNSSEC chain not validated",
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def collect() -> dict:

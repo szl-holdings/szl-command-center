@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import urllib.parse
 
-from .base import clip, envelope, roll_up, unavailable, verified
+from .base import clip, envelope, roll_up, unavailable, verified, exc_kind
 
 ORG = "szl-holdings"
 FLAGSHIP = "a11oy"
@@ -272,7 +272,7 @@ def workflow_observation(
             ref,
         )
     except Exception as exc:  # noqa: BLE001 — failure must never break the page
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def ci_runs(repo: str, limit: int = 5) -> dict:
@@ -293,7 +293,7 @@ def ci_runs(repo: str, limit: int = 5) -> dict:
             run["head_sha"] = sha[:7] if sha else None
         return verified(runs, ref)
     except Exception as exc:  # noqa: BLE001 — failure must never break the page
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def open_issues_by_repo(limit: int = 500) -> dict:
@@ -322,7 +322,7 @@ def open_issues_by_repo(limit: int = 500) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def repo_meta(repo: str) -> dict:
@@ -344,7 +344,7 @@ def repo_meta(repo: str) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def repo_head(repo: str, branch: str = "main") -> dict:
@@ -363,7 +363,7 @@ def repo_head(repo: str, branch: str = "main") -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def collect() -> dict:

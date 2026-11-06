@@ -86,6 +86,15 @@ def reason_of(env: dict) -> str:
     return env.get("reason") or "no reason recorded"
 
 
+def exc_kind(exc: BaseException) -> str:
+    """Public-safe description of a failure: the exception class only.
+
+    Exception text can carry internal URLs, paths or upstream bodies, so it never
+    reaches the page payload (CodeQL py/stack-trace-exposure).
+    """
+    return type(exc).__name__
+
+
 def clip(text: str, limit: int = 180) -> str:
     text = " ".join(str(text).split())
     return text if len(text) <= limit else text[: limit - 1] + "…"

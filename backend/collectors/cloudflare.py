@@ -13,7 +13,7 @@ import os
 
 import requests
 
-from .base import clip, envelope, roll_up, unavailable, verified
+from .base import clip, envelope, roll_up, unavailable, verified, exc_kind
 
 API = "https://api.cloudflare.com/client/v4"
 TIMEOUT = 15
@@ -69,7 +69,7 @@ def _zone(zone_name: str, token: str) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def collect() -> dict:

@@ -17,7 +17,7 @@ import os
 import re
 import subprocess
 
-from .base import clip, envelope, roll_up, unavailable, unknown, verified
+from .base import clip, envelope, roll_up, unavailable, unknown, verified, exc_kind
 
 PAYLOADS = "/home/user/workspace/payloads"
 BUNDLE = os.path.join(PAYLOADS, "05-verifier", "scratch", "self_audit_bundle.json")
@@ -91,7 +91,7 @@ def _run_verifier() -> dict:
             )
         return verified({"verdict": verdict, "checks": checks}, ref)
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def _bundle_facts() -> dict:
@@ -123,7 +123,7 @@ def _bundle_facts() -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, clip(exc))
+        return unavailable(ref, exc_kind(exc))
 
 
 def _master_demo_state() -> dict:
