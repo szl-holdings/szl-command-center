@@ -8,15 +8,19 @@ never a blank (CANON Law 1).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import urllib.parse
 
-from .base import clip, envelope, roll_up, unavailable, verified, exc_kind
+from .base import CollectorUnavailable, clip, envelope, failure_reason, roll_up, unavailable, verified
 
 ORG = "szl-holdings"
 FLAGSHIP = "a11oy"
 GH_TIMEOUT = 25
+# `gh help exit-codes`: 4 means the command requires authentication.
+GH_AUTH_REQUIRED_EXIT = 4
+GH_HTTP_STATUS = re.compile(r"\bHTTP ([1-5][0-9]{2})\b")
 # Same observation width as szl-org-health census/github.py at
 # fb81f4082827312d5298b1ddcd24dd40ea426457. It is one page of recent
 # default-branch push runs, not every required check.
@@ -35,18 +39,28 @@ CI_SCOPE = "latest-per-workflow-within-recent-default-branch-push-window"
 
 
 def _gh(args: list, timeout: int = GH_TIMEOUT) -> str:
-    """Run a gh command, returning stdout. Raises RuntimeError on any failure."""
+    """Run a gh command, returning stdout.
+
+    Raises CollectorUnavailable naming the failure: missing CLI, missing
+    authentication, or the exit status plus any HTTP status gh reported.
+    gh's stderr itself is not served; it can carry proxy hosts and request URLs.
+    """
     if shutil.which("gh") is None:
-        raise RuntimeError("gh CLI not found on PATH")
+        raise CollectorUnavailable("gh CLI not found on PATH")
     proc = subprocess.run(
         ["gh", *args],
         capture_output=True,
         text=True,
         timeout=timeout,
     )
+    if proc.returncode == GH_AUTH_REQUIRED_EXIT:
+        raise CollectorUnavailable(
+            "gh is not authenticated (exit 4); set GH_TOKEN or run gh auth login"
+        )
     if proc.returncode != 0:
-        detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
-        raise RuntimeError(clip(detail, 160))
+        status = GH_HTTP_STATUS.search(proc.stderr or "")
+        detail = f" (HTTP {status.group(1)})" if status else ""
+        raise CollectorUnavailable(f"gh exited with status {proc.returncode}{detail}")
     return proc.stdout
 
 
@@ -272,7 +286,7 @@ def workflow_observation(
             ref,
         )
     except Exception as exc:  # noqa: BLE001 — failure must never break the page
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def ci_runs(repo: str, limit: int = 5) -> dict:
@@ -293,7 +307,7 @@ def ci_runs(repo: str, limit: int = 5) -> dict:
             run["head_sha"] = sha[:7] if sha else None
         return verified(runs, ref)
     except Exception as exc:  # noqa: BLE001 — failure must never break the page
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def open_issues_by_repo(limit: int = 500) -> dict:
@@ -322,7 +336,7 @@ def open_issues_by_repo(limit: int = 500) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def repo_meta(repo: str) -> dict:
@@ -344,7 +358,7 @@ def repo_meta(repo: str) -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def repo_head(repo: str, branch: str = "main") -> dict:
@@ -363,7 +377,7 @@ def repo_head(repo: str, branch: str = "main") -> dict:
             ref,
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def collect() -> dict:

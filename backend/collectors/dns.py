@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 
-from .base import clip, envelope, roll_up, unavailable, unknown, exc_kind
+from .base import CollectorUnavailable, envelope, failure_reason, roll_up, unavailable, unknown
 
 DOMAINS = ("a-11-oy.com", "a11oy.net")
 DIG_TIMEOUT = 10
@@ -47,10 +47,11 @@ def _dig(domain: str, rtype: str) -> list:
         timeout=DIG_TIMEOUT,
     )
     if out.returncode != 0:
-        raise RuntimeError(clip(out.stderr.strip() or f"dig exit {out.returncode}"))
+        # dig's stderr names resolver addresses; the exit status is the reason.
+        raise CollectorUnavailable(f"dig exited with status {out.returncode}")
     records = sorted(line.strip() for line in out.stdout.splitlines() if line.strip())
     if any(not _valid_record(record, rtype) for record in records):
-        raise RuntimeError(f"malformed or unsupported {rtype} response from dig")
+        raise CollectorUnavailable(f"malformed or unsupported {rtype} response from dig")
     return records
 
 
@@ -69,7 +70,7 @@ def _domain(domain: str) -> dict:
             if ds else "no DS records observed; DNSSEC chain not validated",
         )
     except Exception as exc:  # noqa: BLE001
-        return unavailable(ref, exc_kind(exc))
+        return unavailable(ref, failure_reason(exc))
 
 
 def collect() -> dict:
