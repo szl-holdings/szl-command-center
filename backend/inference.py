@@ -107,13 +107,16 @@ def probe_health() -> dict[str, Any]:
         status, payload = _json_response("GET", "/health")
     except requests.RequestException as exc:
         return _result("health", "UNAVAILABLE", detail=f"request failed: {exc.__class__.__name__}")
-    ok = status == 200 and isinstance(payload, dict) and payload.get("status") == "ok"
+    body_status = payload.get("status") if isinstance(payload, dict) else None
+    if not isinstance(body_status, str):
+        body_status = None
+    ok = status == 200 and body_status == "ok"
     return _result(
         "health",
         "VERIFIED" if ok else "UNKNOWN",
         status_code=status,
         detail="public health response" if ok else "response did not match the declared health contract",
-        evidence={"body_status": payload.get("status") if isinstance(payload, dict) else None},
+        evidence={"body_status": body_status},
     )
 
 
@@ -127,11 +130,13 @@ def probe_models() -> dict[str, Any]:
         raw_models = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(raw_models, list):
         raw_models = []
-    names = [
-        item.get("id") or item.get("name")
-        for item in raw_models
-        if isinstance(item, dict) and (item.get("id") or item.get("name"))
-    ]
+    names = []
+    for item in raw_models:
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("id") or item.get("name")
+        if isinstance(candidate, str) and candidate:
+            names.append(candidate[:128])
     matched = EXPECTED_MODEL in names
     return _result(
         "models",
@@ -159,17 +164,28 @@ def probe_payment_gate() -> dict[str, Any]:
         return _result("payment_gate", "UNAVAILABLE", detail=f"request failed: {exc.__class__.__name__}")
     payload_dict = payload if isinstance(payload, dict) else {}
     accepts = payload_dict.get("accepts", [])
+    if not isinstance(accepts, list):
+        accepts = []
     first = accepts[0] if accepts and isinstance(accepts[0], dict) else {}
     amount = first.get("amount")
+    if isinstance(amount, bool) or not isinstance(amount, (str, int, float)):
+        amount = None
+    elif len(str(amount)) > 64:
+        amount = None
     network = first.get("network")
-    verified = status == 402 and payload_dict.get("x402Version") == 2 and amount and network
+    if not isinstance(network, str) or len(network) > 128:
+        network = None
+    x402_version = payload_dict.get("x402Version")
+    if not isinstance(x402_version, int) or isinstance(x402_version, bool):
+        x402_version = None
+    verified = status == 402 and x402_version == 2 and amount is not None and network is not None
     return _result(
         "payment_gate",
         "VERIFIED" if verified else "UNKNOWN",
         status_code=status,
         detail="unsigned completion was rejected by x402 v2" if verified else "payment posture did not match the expected contract",
         evidence={
-            "x402_version": payload_dict.get("x402Version"),
+            "x402_version": x402_version,
             "network": network,
             "amount_atomic": amount,
             "payment_signature_sent": False,
