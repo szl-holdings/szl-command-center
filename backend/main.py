@@ -28,6 +28,8 @@ from .cache import ResponseCache
 from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
 
+from .inference import router as inference_router
+
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 CACHE_TTL = 60
 
@@ -126,5 +128,7 @@ def api_health() -> dict:
 def index() -> FileResponse:
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
+
+app.include_router(inference_router)
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
