@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+import requests
+
 from backend import inference
 
 
@@ -73,3 +76,74 @@ def test_showcase_is_bounded_and_contains_links(monkeypatch):
     assert "Measured Inference" in html
     assert "inference.a-11-oy.com" in html
     assert "paid completion" in html.lower()
+
+
+def test_inference_url_is_allow_listed():
+    assert inference._validated_base_url("https://inference.a-11-oy.com") == "https://inference.a-11-oy.com"
+    assert inference._validated_base_url("http://localhost:9000/") == "http://localhost:9000"
+    assert inference._validated_base_url("https://127.0.0.1:8443") == "https://127.0.0.1:8443"
+
+    for candidate in (
+        "https://evil.example",
+        "http://inference.a-11-oy.com",
+        "https://inference.a-11-oy.com:443",
+        "https://inference.a-11-oy.com/path",
+        "https://user:password@inference.a-11-oy.com",
+        "file:///etc/passwd",
+    ):
+        with pytest.raises(ValueError):
+            inference._validated_base_url(candidate)
+
+
+def test_probe_models_accepts_openai_data_shape(monkeypatch):
+    def fake_request(method, url, **kwargs):
+        return FakeResponse(200, {"data": [{"id": inference.EXPECTED_MODEL}]})
+
+    monkeypatch.setattr(inference.requests, "request", fake_request)
+    result = inference.probe_models()
+
+    assert result["truth_state"] == "VERIFIED"
+    assert result["evidence"]["models"] == [inference.EXPECTED_MODEL]
+
+
+def test_snapshot_uses_short_response_cache(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_request(method, url, **kwargs):
+        calls["count"] += 1
+        if method == "GET" and url.endswith("/health"):
+            return FakeResponse(200, {"status": "ok"})
+        if method == "GET" and url.endswith("/v1/models"):
+            return FakeResponse(200, {"data": [{"id": inference.EXPECTED_MODEL}]})
+        return FakeResponse(
+            402,
+            {"x402Version": 2, "accepts": [{"network": "eip155:8453", "amount": "20000"}]},
+        )
+
+    monkeypatch.setattr(inference.requests, "request", fake_request)
+    monkeypatch.setattr(
+        inference,
+        "_snapshot_cache",
+        inference.ResponseCache(inference.SNAPSHOT_CACHE_TTL_SECONDS),
+    )
+
+    first = inference.snapshot()
+    second = inference.snapshot()
+
+    assert first == second
+    assert calls["count"] == 3
+    assert inference.SNAPSHOT_CACHE_TTL_SECONDS == 30
+
+
+def test_upstream_exception_text_is_not_returned(monkeypatch):
+    secret = "upstream-secret-body"
+
+    def fake_request(method, url, **kwargs):
+        raise requests.RequestException(secret)
+
+    monkeypatch.setattr(inference.requests, "request", fake_request)
+    result = inference.probe_health()
+
+    assert result["truth_state"] == "UNAVAILABLE"
+    assert result["detail"] == "request failed: RequestException"
+    assert secret not in str(result)
