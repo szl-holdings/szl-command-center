@@ -42,6 +42,7 @@ One command, no docker-compose. Open <http://localhost:8000>.
 Responses are cached 60s in-memory; the frontend polls every 30s. The inference
 snapshot collector uses its own 30s cache so `/inference` and
 `/api/inference/snapshot` share one bounded public probe window.
+The `/inference` route is the Python server-rendered showcase; the existing `/` mission-control dashboard remains a separate legacy static bundle.
 The frontend uses same-origin API paths on any port or HTTPS reverse proxy.
 Preview publishers may replace the `__PORT_8000__` marker with their backend
 proxy URL. A failed poll clears the affected panel's previous status and shows
