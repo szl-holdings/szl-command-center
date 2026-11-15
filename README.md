@@ -36,6 +36,8 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/estate` | One JSON tree: github, huggingface, cloudflare, dns, receipts + summary |
 | `GET /api/verticals` | Five verticals, repos, CI health, open-issue counts                  |
 | `GET /api/health` | Liveness                                                                 |
+| `GET /inference` | Python-served measured inference showcase card                         |
+| `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
 
 Responses are cached 60s in-memory; the frontend polls every 30s.
 The frontend uses same-origin API paths on any port or HTTPS reverse proxy.
