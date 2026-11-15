@@ -154,3 +154,30 @@ def test_upstream_exception_text_is_not_returned(monkeypatch):
     assert result["truth_state"] == "UNAVAILABLE"
     assert result["detail"] == "request failed: RequestException"
     assert secret not in str(result)
+
+
+
+def test_malformed_upstream_body_is_not_echoed(monkeypatch):
+    secret = "raw-upstream-body"
+
+    def fake_request(method, url, **kwargs):
+        return FakeResponse(
+            402,
+            {
+                "x402Version": {"secret": secret},
+                "accepts": secret,
+                "unexpected": secret,
+            },
+        )
+
+    monkeypatch.setattr(inference.requests, "request", fake_request)
+    result = inference.probe_payment_gate()
+
+    assert result["truth_state"] == "UNKNOWN"
+    assert result["evidence"] == {
+        "x402_version": None,
+        "network": None,
+        "amount_atomic": None,
+        "payment_signature_sent": False,
+    }
+    assert secret not in str(result)
