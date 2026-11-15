@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 import requests
 
@@ -74,7 +76,12 @@ def test_showcase_is_bounded_and_contains_links(monkeypatch):
     )
     html = inference.render_showcase(inference.snapshot())
     assert "Measured Inference" in html
-    assert "inference.a-11-oy.com" in html
+    links = re.findall(r'href="([^"]+)"', html)
+    assert links[:3] == [
+        "https://inference.a-11-oy.com/",
+        "https://inference.a-11-oy.com/v1/models",
+        "https://a11oy.net/",
+    ]
     assert "paid completion" in html.lower()
 
 
