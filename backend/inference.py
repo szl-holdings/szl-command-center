@@ -111,18 +111,19 @@ def probe_payment_gate() -> dict[str, Any]:
         )
     except requests.RequestException as exc:
         return _result("payment_gate", "UNAVAILABLE", detail=f"request failed: {exc.__class__.__name__}")
-    accepts = payload.get("accepts", []) if isinstance(payload, dict) else []
+    payload_dict = payload if isinstance(payload, dict) else {}
+    accepts = payload_dict.get("accepts", [])
     first = accepts[0] if accepts and isinstance(accepts[0], dict) else {}
     amount = first.get("amount")
     network = first.get("network")
-    verified = status == 402 and payload.get("x402Version") == 2 and amount and network
+    verified = status == 402 and payload_dict.get("x402Version") == 2 and amount and network
     return _result(
         "payment_gate",
         "VERIFIED" if verified else "UNKNOWN",
         status_code=status,
         detail="unsigned completion was rejected by x402 v2" if verified else "payment posture did not match the expected contract",
         evidence={
-            "x402_version": payload.get("x402Version") if isinstance(payload, dict) else None,
+            "x402_version": payload_dict.get("x402Version"),
             "network": network,
             "amount_atomic": amount,
             "payment_signature_sent": False,
