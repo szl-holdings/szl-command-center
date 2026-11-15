@@ -36,8 +36,13 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/estate` | One JSON tree: github, huggingface, cloudflare, dns, receipts + summary |
 | `GET /api/verticals` | Five verticals, repos, CI health, open-issue counts                  |
 | `GET /api/health` | Liveness                                                                 |
+| `GET /inference` | Python-served measured inference showcase card                         |
+| `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
 
-Responses are cached 60s in-memory; the frontend polls every 30s.
+Responses are cached 60s in-memory; the frontend polls every 30s. The inference
+snapshot collector uses its own 30s cache so `/inference` and
+`/api/inference/snapshot` share one bounded public probe window.
+The `/inference` route is the Python server-rendered showcase; the existing `/` mission-control dashboard remains a separate legacy static bundle.
 The frontend uses same-origin API paths on any port or HTTPS reverse proxy.
 Preview publishers may replace the `__PORT_8000__` marker with their backend
 proxy URL. A failed poll clears the affected panel's previous status and shows
