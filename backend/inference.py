@@ -129,7 +129,7 @@ def probe_models() -> dict[str, Any]:
         raw_models = []
     names = [
         item.get("id") or item.get("name")
-        for item in models
+        for item in raw_models
         if isinstance(item, dict) and (item.get("id") or item.get("name"))
     ]
     matched = EXPECTED_MODEL in names
