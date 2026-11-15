@@ -11,14 +11,56 @@ from datetime import datetime, timezone
 from html import escape
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from .cache import ResponseCache
+
 router = APIRouter()
-INFERENCE_URL = os.getenv("SZL_INFERENCE_URL", "https://inference.a-11-oy.com").rstrip("/")
+DEFAULT_INFERENCE_URL = "https://inference.a-11-oy.com"
+_ALLOWED_PUBLIC_HOST = "inference.a-11-oy.com"
+_ALLOWED_LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+SNAPSHOT_CACHE_TTL_SECONDS = 30
+
+
+def _validated_base_url(raw: str | None = None) -> str:
+    """Return an allow-listed origin suitable for server-side probing.
+
+    The public gateway is HTTPS-only. Local development may use HTTP(S) on
+    localhost or 127.0.0.1, including a non-default port. Paths, credentials,
+    query strings, fragments, redirects, and every other host are rejected so
+    an environment variable cannot turn these collectors into an SSRF proxy.
+    """
+    value = (raw or DEFAULT_INFERENCE_URL).strip()
+    try:
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("SZL_INFERENCE_URL must be a valid allow-listed origin") from exc
+    if not parsed.scheme or not host or parsed.username or parsed.password:
+        raise ValueError("SZL_INFERENCE_URL must be a valid allow-listed origin")
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        raise ValueError("SZL_INFERENCE_URL must contain only an allow-listed origin")
+    scheme = parsed.scheme.lower()
+    if host == _ALLOWED_PUBLIC_HOST:
+        if scheme != "https" or port is not None:
+            raise ValueError("public SZL_INFERENCE_URL must use the canonical HTTPS origin")
+    elif host in _ALLOWED_LOCAL_HOSTS:
+        if scheme not in {"http", "https"}:
+            raise ValueError("local SZL_INFERENCE_URL must use HTTP or HTTPS")
+    else:
+        raise ValueError("SZL_INFERENCE_URL host is not allow-listed")
+    suffix = f":{port}" if port is not None else ""
+    return f"{scheme}://{host}{suffix}"
+
+
+INFERENCE_URL = _validated_base_url(os.getenv("SZL_INFERENCE_URL"))
 TIMEOUT_SECONDS = float(os.getenv("SZL_INFERENCE_TIMEOUT_SECONDS", "4"))
+_snapshot_cache = ResponseCache(SNAPSHOT_CACHE_TTL_SECONDS)
 EXPECTED_MODEL = "ternary-bonsai-2-27b-pq2_0"
 
 
@@ -80,7 +122,11 @@ def probe_models() -> dict[str, Any]:
         status, payload = _json_response("GET", "/v1/models")
     except requests.RequestException as exc:
         return _result("models", "UNAVAILABLE", detail=f"request failed: {exc.__class__.__name__}")
-    models = payload.get("models", []) if isinstance(payload, dict) else []
+    raw_models = payload.get("models") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        raw_models = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        raw_models = []
     names = [
         item.get("id") or item.get("name")
         for item in models
@@ -131,7 +177,7 @@ def probe_payment_gate() -> dict[str, Any]:
     )
 
 
-def snapshot() -> dict[str, Any]:
+def _snapshot_uncached() -> dict[str, Any]:
     checks = [probe_health(), probe_models(), probe_payment_gate()]
     verified = sum(item["truth_state"] == "VERIFIED" for item in checks)
     return {
@@ -147,6 +193,10 @@ def snapshot() -> dict[str, Any]:
             "A transport HTTP 200 is not a production-readiness certificate.",
         ],
     }
+
+
+def snapshot() -> dict[str, Any]:
+    return _snapshot_cache.get("inference-snapshot", _snapshot_uncached)
 
 
 def _badge(item: dict[str, Any]) -> str:
