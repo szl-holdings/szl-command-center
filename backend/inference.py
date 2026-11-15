@@ -253,7 +253,7 @@ main{{max-width:1120px;margin:auto;padding:72px 24px 100px}}a{{color:var(--accen
 .meta{{color:#8293aa;font:12px ui-monospace,monospace;margin-top:18px}}.actions{{display:flex;gap:12px;flex-wrap:wrap;margin:30px 0 54px}}
 .btn{{border:1px solid var(--line);border-radius:10px;padding:12px 17px;text-decoration:none;font-weight:650}}.btn.primary{{background:var(--text);color:#07101d;border-color:var(--text)}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}}.check{{background:#0e1a2add;border:1px solid var(--line);border-radius:14px;padding:21px;min-height:145px}}
-.label{{color:#8293aa}}.status{{margin:12px 0 8px}.badge{{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font:12px ui-monospace,monospace;letter-spacing:.08em}}.badge-verified{{color:var(--text);border-color:#b7c8dc}}.badge-unknown,.badge-unavailable{{color:var(--muted)}}
+.label{{color:#8293aa}}.status{{margin:12px 0 8px}}.badge{{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font:12px ui-monospace,monospace;letter-spacing:.08em}}.badge-verified{{color:var(--text);border-color:#b7c8dc}}.badge-unknown,.badge-unavailable{{color:var(--muted)}}
 .detail{{color:var(--muted);min-height:44px}}.code{{color:#8293aa;margin-top:10px}}section{{margin-top:62px}}h2{{font-size:28px;letter-spacing:-.02em}}.limits{{border-left:3px solid var(--accent);background:var(--panel);padding:15px 20px;color:var(--muted)}}footer{{border-top:1px solid var(--line);margin-top:72px;padding-top:22px;color:#8293aa;font-size:13px}}
 </style></head><body><main>
 <div class="eyebrow">SZL / MEASURED INFERENCE</div>
