@@ -153,7 +153,18 @@ evaluate the missing authority classes. The SHA-256 in the response is only
 a reproducible observation fingerprint, not a signature.
 
 The collector is read-only: no provider writes, cookies, payment, DNS
-mutation, key material or browser session. Its endpoints are compile-time
+mutation, key material in responses or browser session. Unlike the
+legacy GitHub estate collector, its protected-main reader uses pinned,
+bounded Python stdlib HTTPS to the official GitHub branch endpoint and
+does not require the `gh` executable in hosted Python environments.
+It requires `main` to be identified as protected, rejects redirects,
+non-JSON/oversized/duplicate-key replies, and fails closed on 403
+or rate limiting. It accepts an optional `GH_TOKEN` (or `GITHUB_TOKEN`)
+from the hosting environment for higher API quota; neither the token
+nor upstream exception details are emitted to the dashboard. Anonymous
+GitHub API reads are rate-limited, and each witness requires two
+independent main reads. Set a provider-scoped read-only token or expect
+the source axis to become unavailable after quota exhaustion. Its endpoints are compile-time
 pinned HTTPS origins, disallow redirects, limit response size, require
 JSON, reject duplicate keys and record only selected fields plus
 byte hashes. An HTTP 403 challenge, unavailable GitHub, stale head or

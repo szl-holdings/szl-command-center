@@ -2,20 +2,19 @@
 
 Samples GitHub protected main before and after fixed, read-only HTTPS
 observations of both A11oy origins. A source declaration is NOT a byte-level
-deployment proof. No provider writes, credentials, or release approval.
+deployment proof. No provider writes, credential disclosure, or release approval.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import os
 import re
 from datetime import datetime, timezone
 from typing import Callable
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-
-from .collectors.github import _gh
 
 SCHEMA = "szl.temporal-convergence-observation/v1"
 REPOSITORY = "szl-holdings/a11oy"
@@ -28,6 +27,8 @@ ROUTES = {
 STORES = frozenset(("gdw", "khipu", "khipu_council", "khipu_lmdb",
                     "khipu_repl", "series_a", "unay"))
 MAX_RESPONSE = 262144
+MAX_MAIN_RESPONSE = 32768
+GITHUB_MAIN_URL = "https://api.github.com/repos/szl-holdings/a11oy/branches/main"
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 
 
@@ -85,11 +86,39 @@ def _get(url):
 
 
 def _head():
-    value = _gh(["api", f"repos/{REPOSITORY}/branches/main",
-                 "--jq", ".commit.sha"], timeout=20).strip().lower()
-    if not SHA40.fullmatch(value):
-        raise InvalidObservation("INVALID_GITHUB_MAIN_SHA")
-    return value
+    """Read protected GitHub main via stdlib HTTPS, independent of gh.
+
+    The host, path, body size, branch identity and protected flag are pinned.
+    Invalid authentication, rate limits and redirects fail closed, without
+    retrying anonymously or treating a stale source revision as main.
+    """
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Cache-Control": "no-cache",
+        "User-Agent": "szl-convergence-witness/1",
+    }
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    request = Request(GITHUB_MAIN_URL, method="GET", headers=headers)
+    with build_opener(NoRedirect()).open(request, timeout=10) as response:
+        if response.status != 200 or response.geturl() != GITHUB_MAIN_URL:
+            raise InvalidObservation("GITHUB_MAIN_HTTP_OR_REDIRECT_DENIED")
+        media_type = response.headers.get("Content-Type", "").lower()
+        if not ("application/json" in media_type or
+                "application/vnd.github+json" in media_type):
+            raise InvalidObservation("GITHUB_MAIN_JSON_REQUIRED")
+        raw = response.read(MAX_MAIN_RESPONSE + 1)
+    if len(raw) > MAX_MAIN_RESPONSE:
+        raise InvalidObservation("GITHUB_MAIN_BODY_TOO_LARGE")
+    data = _parse(raw)
+    commit = data.get("commit")
+    sha = commit.get("sha") if type(commit) is dict else None
+    if (data.get("name") != "main" or data.get("protected") is not True
+            or type(sha) is not str or not SHA40.fullmatch(sha)):
+        raise InvalidObservation("GITHUB_MAIN_PROTECTED_SHA_UNVERIFIED")
+    return sha
 
 
 def _reported_revision(doc):
@@ -173,6 +202,14 @@ def collect(*, head_reader: Callable[[], str] | None = None,
             if type(sha) is not str or not SHA40.fullmatch(sha):
                 raise InvalidObservation("INVALID_SHA")
             return sha
+        except HTTPError as exc:
+            # A status code is actionable; never expose headers, URLs or tokens.
+            status = exc.code
+            if type(status) is int and 400 <= status <= 599:
+                blockers.append("GITHUB_MAIN_" + phase + "_HTTP_" + str(status))
+            else:
+                blockers.append("GITHUB_MAIN_" + phase + "_UNAVAILABLE")
+            return None
         except Exception:
             blockers.append("GITHUB_MAIN_" + phase + "_UNAVAILABLE")
             return None
