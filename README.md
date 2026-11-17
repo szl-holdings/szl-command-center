@@ -35,6 +35,7 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /`           | Mission-control frontend (static, served by FastAPI)                     |
 | `GET /api/estate` | One JSON tree: github, huggingface, cloudflare, dns, receipts + summary |
 | `GET /api/verticals` | Five verticals, repos, CI health, open-issue counts                  |
+| `GET /api/convergence` | Unsigned temporal witness of main→both origins→seven-store preservation→frontier readiness; never release authorization |
 | `GET /api/health` | Liveness                                                                 |
 | `GET /inference` | Python-served measured inference showcase card                         |
 | `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
@@ -129,3 +130,36 @@ collection, and each Uvicorn worker has its own cache.
 Offline cache regressions: `python -m unittest discover -s tests -p test_response_cache.py -v`.
 
 Estate on Hugging Face: models, datasets and Spaces are published under the [SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS) org.
+
+
+## Temporal convergence witness (experimental)
+
+The new mission-control panel uses a separate 60-second cached
+`GET /api/convergence` route. It reads protected GitHub `main` **twice**,
+bracketing fixed-origin HTTPS GETs of A11oy build-info, state-store status
+and frontier readiness. A change of main during this read produces
+`MAIN_MOVED` and cannot be mistaken for parity. Both origins must declare
+the same exact main revision, and their fenced writer epochs, global lease
+sequences and all seven restored store states must agree.
+
+The panel presents a four-axis evidence vector: source declarations,
+seven-store preservation, frontier readiness and independently verified
+execution authority. Its source match is **declaration-level**, the lease is
+an unsigned HTTP observation, and frontier readiness is the service's own
+report. Execution authority is always `NOT_EVALUATED`. Even a completely
+green observational vector **never** sets `production_qualified` or
+`can_deploy`; a separate signed deployment and execution controller must
+evaluate the missing authority classes. The SHA-256 in the response is only
+a reproducible observation fingerprint, not a signature.
+
+The collector is read-only: no provider writes, cookies, payment, DNS
+mutation, key material or browser session. Its endpoints are compile-time
+pinned HTTPS origins, disallow redirects, limit response size, require
+JSON, reject duplicate keys and record only selected fields plus
+byte hashes. An HTTP 403 challenge, unavailable GitHub, stale head or
+malformed evidence degrades to a reason code and never silently inherits
+the previously displayed observation.
+
+Offline regression suites include `tests/test_convergence.py`,
+`tests/test_convergence_route.py`, and
+`tests/test_convergence_display.cjs`.
