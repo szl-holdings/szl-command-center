@@ -41,11 +41,16 @@ async function render(estate, verticals, options = {}) {
       requests.push(url);
       const name = url.endsWith('/estate') ? 'estate' :
         url.endsWith('/ontology') ? 'ontology' : 'verticals';
-      // The additional evidence endpoint is disabled by default, as in production.
-      const ok = name === 'ontology' ? Boolean(options.ontology) && !failed.has(name) :
+      // Explicit feature-disabled response is not the same as a failed endpoint.
+      const graphFailure = name === 'ontology' &&
+        (options.ontologyFailure || failed.has('ontology'));
+      const ok = name === 'ontology' ? Boolean(options.ontology) && !graphFailure :
         !failed.has(name);
-      return { ok, status: 503, json: async () => name === 'estate' ? estate :
-        name === 'verticals' ? verticals : options.ontology };
+      const payload = name === 'estate' ? estate :
+        name === 'verticals' ? verticals :
+          graphFailure ? { reason_code: 'UPSTREAM_FAILURE' } :
+            (options.ontology || { reason_code: 'FEATURE_NOT_ADMITTED' });
+      return { ok, status: 503, json: async () => payload };
     },
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -208,6 +213,30 @@ test('disabled evidence graph leaves historical successes unpromoted', async () 
   assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
   assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE/);
   assert.equal(ids.get('strip-state').textContent, 'UNAVAILABLE');
+});
+
+test('feature-disabled graph preserves independently verified base dashboard', async () => {
+  const { ids } = await render(...healthyFixture());
+  assert.equal(ids.get('strip-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+});
+
+test('unexpected ontology outage downgrades otherwise verified base dashboard', async () => {
+  const [estate, verticals] = healthyFixture();
+  const { ids } = await render(estate, verticals, { ontologyFailure: true });
+  assert.equal(ids.get('strip-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+});
+
+test('admitted verified matching graph preserves independently verified base dashboard', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
 });
 
 test('source-matched read-only ontology graph renders five evidence sources', async () => {
