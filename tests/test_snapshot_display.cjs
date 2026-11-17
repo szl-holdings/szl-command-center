@@ -194,9 +194,59 @@ test('malformed vertical responses clear previously verified vertical state', as
 });
 
 
+function releaseFabricFixture(graph) {
+  const definitions = [
+    ['github_source', ['github'], 'IMMUTABLE_SOURCE_CHECKS_AND_REVIEW'],
+    ['hf_catalog', ['huggingface'], 'PINNED_MODEL_AND_DATASET_ARTIFACT_BYTES'],
+    ['cloudflare_edge', ['cloudflare', 'dns'], 'EXACT_DEPLOYMENT_AND_RULE_READBACK'],
+    ['receipt_index', ['receipts'], 'INDEPENDENTLY_VERIFIED_RECEIPT_AUTHORITY'],
+    ['model_evaluation', [], 'WEIGHT_BOUND_MEASUREMENTS_AND_BASELINES'],
+    ['runtime_deployment', [], 'SOURCE_MATCHED_EXTERNAL_RUNTIME_AND_AUTH'],
+    ['payment_settlement', [], 'FACILITATOR_CHAIN_AND_PAYOUT_RECONCILIATION'],
+    ['pypi_distribution', [], 'PEP740_WHEEL_SDIST_TAG_AND_SOURCE_MATCH']
+  ];
+  const rules = [
+    ['github_source', 'hf_catalog', 'GITHUB_TO_HF_ARTIFACT_BINDING'],
+    ['github_source', 'cloudflare_edge', 'SOURCE_TO_EDGE_CONFIG_BINDING'],
+    ['github_source', 'pypi_distribution', 'SOURCE_TO_PACKAGE_PROVENANCE_BINDING'],
+    ['hf_catalog', 'model_evaluation', 'WEIGHTS_TO_EVALUATION_BINDING'],
+    ['hf_catalog', 'runtime_deployment', 'WEIGHTS_TO_RUNTIME_BINDING'],
+    ['cloudflare_edge', 'runtime_deployment', 'EDGE_TO_RUNTIME_IDENTITY_BINDING'],
+    ['receipt_index', 'model_evaluation', 'RECEIPT_TO_EVALUATION_BINDING'],
+    ['receipt_index', 'payment_settlement', 'RECEIPT_TO_SETTLEMENT_BINDING'],
+    ['runtime_deployment', 'payment_settlement', 'RUNTIME_TO_SETTLEMENT_BINDING']
+  ];
+  const sources = Object.fromEntries(graph.nodes.slice(1).map(n => [n.label, n.truth_state]));
+  const stages = definitions.map(function ([id, collectors, required_gate]) {
+    const values = collectors.map(x => sources[x] || 'UNAVAILABLE');
+    const collector_state = !values.length || values.every(x => x === 'UNAVAILABLE')
+      ? 'UNAVAILABLE' : values.every(x => x === 'VERIFIED') ? 'VERIFIED' : 'UNKNOWN';
+    return { id, kind: 'release_stage', collectors, required_gate, collector_state,
+      collector_scope: collectors.length ? 'EXISTING_METADATA_ONLY' : 'NO_ADMITTED_COLLECTOR',
+      qualification: 'NOT_ESTABLISHED', can_execute_actions: false };
+  });
+  return {
+    schema: 'szl.readonly.release_fabric.v1',
+    scope: 'SOURCE_COVERAGE_AND_RELEASE_REQUIREMENTS_ONLY',
+    basis_source_snapshot_sha256: graph.source_snapshot_sha256,
+    authority: 'READ_ONLY_NO_APPROVAL',
+    production_qualified: false, can_deploy: false,
+    financial_revenue_verified: false, fingerprint_is_signature: false,
+    independently_qualified_stages: 0,
+    stage_count: stages.length, unverified_dependency_count: rules.length,
+    collector_verified_stages: stages.filter(x => x.collector_state === 'VERIFIED').length,
+    stages,
+    dependencies: rules.map(function ([source, target, required_binding]) {
+      return { source, target, required_binding, evidence_state: 'NOT_ESTABLISHED',
+        action_authorized: false };
+    }),
+    content_sha256: 'c'.repeat(64)
+  };
+}
+
 function graphFixture(estate, sourceStamp = estate.generated_at) {
   const sources = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
-  return {
+  const graph = {
     schema: 'szl.readonly.evidence_graph.v1',
     source_generated_at: sourceStamp,
     source_snapshot_sha256: 'a'.repeat(64),
@@ -213,6 +263,8 @@ function graphFixture(estate, sourceStamp = estate.generated_at) {
         action_authorized: false }))
     ],
   };
+  graph.release_fabric = releaseFabricFixture(graph);
+  return graph;
 }
 
 test('disabled evidence graph leaves historical successes unpromoted', async () => {
@@ -245,6 +297,7 @@ test('admitted verified matching graph preserves independently verified base das
   graph.rollup = 'VERIFIED';
   graph.verified_sources = 5;
   graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
+  graph.release_fabric = releaseFabricFixture(graph);
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
   assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
@@ -261,6 +314,15 @@ test('source-matched read-only ontology graph renders five evidence sources', as
     assert.match(content, new RegExp(name));
   }
   assert.doesNotMatch(content, /production.ready/i);
+  assert.match(content, /ONE RELEASE CHAIN/);
+  assert.match(content, /0\/8 independently qualified/);
+  assert.match(content, /0\/9 links proven/);
+  assert.match(content, /GitHub source/);
+  assert.match(content, /Hugging Face artifacts/);
+  assert.match(content, /Cloudflare \/ DNS/);
+  assert.match(content, /x402 settlement/);
+  assert.match(content, /PyPI release/);
+  assert.match(content, /NOT ESTABLISHED/);
 });
 
 test('source snapshot mismatch is visibly unavailable rather than silently reused', async () => {
@@ -318,4 +380,37 @@ test('ontology cannot grant actions through a fabricated authorization flag', as
   graph.authorization.can_execute_actions = true;
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+});
+
+test('release fabric rejects attempted release, payment or execution promotion', async () => {
+  const corruptions = [
+    fabric => { fabric.production_qualified = true; },
+    fabric => { fabric.can_deploy = true; },
+    fabric => { fabric.financial_revenue_verified = true; },
+    fabric => { fabric.independently_qualified_stages = 1; },
+    fabric => { fabric.stages[7].qualification = 'QUALIFIED'; },
+    fabric => { fabric.stages[6].collector_state = 'VERIFIED'; },
+    fabric => { fabric.dependencies[0].evidence_state = 'PROVEN'; },
+    fabric => { fabric.dependencies[2].action_authorized = true; },
+    fabric => { fabric.basis_source_snapshot_sha256 = 'f'.repeat(64); },
+    fabric => { fabric.fingerprint_is_signature = true; },
+    fabric => { fabric.dependencies.pop(); },
+  ];
+  for (const corrupt of corruptions) {
+    const [estate, verticals] = healthyFixture();
+    const graph = graphFixture(estate);
+    corrupt(graph.release_fabric);
+    const { ids } = await render(estate, verticals, { ontology: graph });
+    assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+    assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE|INVALID_GRAPH_CONTRACT/);
+    assert.doesNotMatch(ids.get('ontology-graph').textContent, /GATE NOT ESTABLISHED/);
+  }
+});
+
+test('release fabric never enables public-preview private collectors', async () => {
+  const [estate, verticals] = fixture(false);
+  const graph = graphFixture(estate);
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.match(ids.get('ontology-graph').textContent, /NO_ADMITTED_COLLECTOR|GATE NOT ESTABLISHED/);
+  assert.doesNotMatch(ids.get('ontology-graph').textContent, /private.customer|payment.signature/i);
 });

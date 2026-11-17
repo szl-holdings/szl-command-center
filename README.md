@@ -37,6 +37,7 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/verticals` | Five verticals, repos, CI health, open-issue counts                  |
 | `GET /api/convergence` | Unsigned temporal witness of main→both origins→seven-store preservation→frontier readiness; never release authorization |
 | `GET /api/source-manifest` | Read-only local Docker source-byte self-consistency; never signed origin or action authority |
+| `GET /api/ontology` | **Disabled by default**: reuses existing estate cache for a read-only five-source ontology and eight-stage/nine-edge release proof graph; no independent qualification or authority |
 | `GET /api/health` | Liveness                                                                 |
 | `GET /inference` | Python-served measured inference showcase card                         |
 | `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
@@ -175,6 +176,24 @@ the previously displayed observation.
 Offline regression suites include `tests/test_convergence.py`,
 `tests/test_convergence_route.py`, and
 `tests/test_convergence_display.cjs`.
+
+## Unified release evidence fabric (source-tested, opt-in)
+
+The existing `GET /api/ontology` now projects **one eight-stage,
+nine-dependency release chain** over the existing five collector snapshots,
+without performing additional provider reads. GitHub, Hugging Face,
+Cloudflare/DNS, and receipts remain metadata observations; runtime,
+model evaluation, x402 settlement, and PyPI release qualification are
+explicitly **not established**. A metadata-green collector is never enough
+to claim a model, payment, production deployment, or package is qualified.
+
+The frontend presents these source-bound requirements as a keyboard-friendly
+evidence graph, never an autonomous action console. It reuses the existing
+`SZL_ONTOLOGY_READONLY_ENABLED=1` admission flag and remains disabled by
+default; in public-preview mode, no privileged collector is queried even if
+the flag is set. Checksums are not signatures. See the
+[complete release-fabric contract](docs/RELEASE_FABRIC.md) and
+`tests/test_release_fabric.py`.
 
 ## Derived Hugging Face Docker preview
 

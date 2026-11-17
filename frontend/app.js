@@ -725,6 +725,140 @@
   }
 
   var sourceNames = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
+  var releaseStageDefinitions = [
+    ['github_source', ['github'], 'IMMUTABLE_SOURCE_CHECKS_AND_REVIEW', 'GitHub source'],
+    ['hf_catalog', ['huggingface'], 'PINNED_MODEL_AND_DATASET_ARTIFACT_BYTES', 'Hugging Face artifacts'],
+    ['cloudflare_edge', ['cloudflare', 'dns'], 'EXACT_DEPLOYMENT_AND_RULE_READBACK', 'Cloudflare / DNS'],
+    ['receipt_index', ['receipts'], 'INDEPENDENTLY_VERIFIED_RECEIPT_AUTHORITY', 'Receipt evidence'],
+    ['model_evaluation', [], 'WEIGHT_BOUND_MEASUREMENTS_AND_BASELINES', 'Model evaluation'],
+    ['runtime_deployment', [], 'SOURCE_MATCHED_EXTERNAL_RUNTIME_AND_AUTH', 'Runtime deployment'],
+    ['payment_settlement', [], 'FACILITATOR_CHAIN_AND_PAYOUT_RECONCILIATION', 'x402 settlement'],
+    ['pypi_distribution', [], 'PEP740_WHEEL_SDIST_TAG_AND_SOURCE_MATCH', 'PyPI release']
+  ];
+  var releaseEdgeDefinitions = [
+    ['github_source', 'hf_catalog', 'GITHUB_TO_HF_ARTIFACT_BINDING'],
+    ['github_source', 'cloudflare_edge', 'SOURCE_TO_EDGE_CONFIG_BINDING'],
+    ['github_source', 'pypi_distribution', 'SOURCE_TO_PACKAGE_PROVENANCE_BINDING'],
+    ['hf_catalog', 'model_evaluation', 'WEIGHTS_TO_EVALUATION_BINDING'],
+    ['hf_catalog', 'runtime_deployment', 'WEIGHTS_TO_RUNTIME_BINDING'],
+    ['cloudflare_edge', 'runtime_deployment', 'EDGE_TO_RUNTIME_IDENTITY_BINDING'],
+    ['receipt_index', 'model_evaluation', 'RECEIPT_TO_EVALUATION_BINDING'],
+    ['receipt_index', 'payment_settlement', 'RECEIPT_TO_SETTLEMENT_BINDING'],
+    ['runtime_deployment', 'payment_settlement', 'RUNTIME_TO_SETTLEMENT_BINDING']
+  ];
+
+  function validReleaseFabric(fabric, snapshotSha, nodes) {
+    if (!isRecord(fabric) || fabric.schema !== 'szl.readonly.release_fabric.v1' ||
+        fabric.scope !== 'SOURCE_COVERAGE_AND_RELEASE_REQUIREMENTS_ONLY' ||
+        fabric.basis_source_snapshot_sha256 !== snapshotSha ||
+        fabric.authority !== 'READ_ONLY_NO_APPROVAL' ||
+        fabric.production_qualified !== false || fabric.can_deploy !== false ||
+        fabric.financial_revenue_verified !== false ||
+        fabric.fingerprint_is_signature !== false ||
+        fabric.independently_qualified_stages !== 0 ||
+        fabric.stage_count !== releaseStageDefinitions.length ||
+        fabric.unverified_dependency_count !== releaseEdgeDefinitions.length ||
+        !Array.isArray(fabric.stages) ||
+        fabric.stages.length !== releaseStageDefinitions.length ||
+        !Array.isArray(fabric.dependencies) ||
+        fabric.dependencies.length !== releaseEdgeDefinitions.length ||
+        typeof fabric.content_sha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(fabric.content_sha256)) return false;
+
+    var values = Object.create(null);
+    nodes.forEach(function (n) {
+      if (n.kind === 'evidence_source') values[n.label] = n.truth_state;
+    });
+    var admitted = 0;
+    for (var i = 0; i < releaseStageDefinitions.length; i++) {
+      var definition = releaseStageDefinitions[i];
+      var stage = fabric.stages[i];
+      var required = definition[1];
+      if (!isRecord(stage) || stage.id !== definition[0] ||
+          stage.kind !== 'release_stage' || stage.required_gate !== definition[2] ||
+          stage.qualification !== 'NOT_ESTABLISHED' ||
+          stage.can_execute_actions !== false ||
+          !Array.isArray(stage.collectors) ||
+          stage.collectors.length !== required.length ||
+          !required.every(function (name, idx) { return stage.collectors[idx] === name; }) ||
+          stage.collector_scope !== (required.length ? 'EXISTING_METADATA_ONLY' : 'NO_ADMITTED_COLLECTOR')) return false;
+      var states = required.map(function (name) { return values[name] || 'UNAVAILABLE'; });
+      var expected = !states.length || states.every(function (x) { return x === 'UNAVAILABLE'; })
+        ? 'UNAVAILABLE'
+        : states.every(function (x) { return x === 'VERIFIED'; }) ? 'VERIFIED' : 'UNKNOWN';
+      if (stage.collector_state !== expected) return false;
+      if (expected === 'VERIFIED') admitted++;
+    }
+    if (fabric.collector_verified_stages !== admitted) return false;
+    for (var j = 0; j < releaseEdgeDefinitions.length; j++) {
+      var edge = fabric.dependencies[j];
+      var rule = releaseEdgeDefinitions[j];
+      if (!isRecord(edge) || edge.source !== rule[0] || edge.target !== rule[1] ||
+          edge.required_binding !== rule[2] ||
+          edge.evidence_state !== 'NOT_ESTABLISHED' || edge.action_authorized !== false) return false;
+    }
+    return true;
+  }
+
+  function renderReleaseFabric(fabric, host) {
+    var wrap = document.createElement('section');
+    wrap.className = 'release-fabric';
+    wrap.setAttribute('aria-label', 'Cross-platform release proof dependencies');
+    var heading = document.createElement('h3');
+    heading.textContent = 'ONE RELEASE CHAIN · EIGHT EVIDENCE GATES';
+    wrap.appendChild(heading);
+    var boundary = document.createElement('p');
+    boundary.className = 'mono release-fabric-boundary';
+    boundary.textContent = '0/8 independently qualified · 0/9 links proven · no deployment, payment, or release authority';
+    wrap.appendChild(boundary);
+    var cards = document.createElement('ol');
+    cards.className = 'release-fabric-stages';
+    releaseStageDefinitions.forEach(function (definition, i) {
+      var stage = fabric.stages[i];
+      var item = document.createElement('li');
+      item.className = 'release-fabric-stage';
+      var label = document.createElement('strong');
+      label.textContent = definition[3];
+      item.appendChild(label);
+      var state = document.createElement('span');
+      state.className = 'mono';
+      state.textContent = 'Collector metadata: ' + stage.collector_state;
+      item.appendChild(state);
+      var admission = document.createElement('span');
+      admission.className = 'mono release-fabric-held';
+      admission.textContent = 'GATE NOT ESTABLISHED';
+      item.appendChild(admission);
+      var gate = document.createElement('code');
+      gate.textContent = definition[2];
+      item.appendChild(gate);
+      cards.appendChild(item);
+    });
+    wrap.appendChild(cards);
+    var edgesHeading = document.createElement('h4');
+    edgesHeading.textContent = 'Required source-to-outcome bindings';
+    wrap.appendChild(edgesHeading);
+    var edges = document.createElement('ul');
+    edges.className = 'release-fabric-edges';
+    releaseEdgeDefinitions.forEach(function (rule) {
+      var item = document.createElement('li');
+      var from = releaseStageDefinitions.find(function (s) { return s[0] === rule[0]; });
+      var to = releaseStageDefinitions.find(function (s) { return s[0] === rule[1]; });
+      var label = document.createElement('strong');
+      label.textContent = from[3] + ' → ' + to[3];
+      item.appendChild(label);
+      var proof = document.createElement('code');
+      proof.textContent = rule[2] + ' · NOT ESTABLISHED';
+      item.appendChild(proof);
+      edges.appendChild(item);
+    });
+    wrap.appendChild(edges);
+    var note = document.createElement('p');
+    note.className = 'mono release-fabric-foot';
+    note.textContent = 'GRAPH HASH (UNSIGNED) ' + fabric.content_sha256.slice(0, 24) +
+      '… · collector success does not imply verified weights, settled payments, or a published wheel';
+    wrap.appendChild(note);
+    host.appendChild(wrap);
+  }
 
   function validOntology(payload) {
     if (!isRecord(payload) || payload.schema !== 'szl.readonly.evidence_graph.v1' ||
@@ -771,7 +905,7 @@
           links.has(edge.source)) return false;
       links.add(edge.source);
     }
-    return links.size === 5;
+    return links.size === 5 && validReleaseFabric(payload.release_fabric, payload.source_snapshot_sha256, payload.nodes);
   }
 
   function renderOntology(payload) {
@@ -804,6 +938,7 @@
       list.appendChild(item);
     });
     host.appendChild(list);
+    renderReleaseFabric(payload.release_fabric, host);
     el('ontology-foot').textContent =
       'READ ONLY · source-bound SHA256 ' + payload.source_snapshot_sha256.slice(0, 16) +
       ' · independent witness: NOT ESTABLISHED · actions: DENIED';

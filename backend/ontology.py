@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 
 from .collectors.base import roll_up
+from .release_fabric import project as project_release_fabric
 
 SCHEMA = "szl.readonly.evidence_graph.v1"
 ORDER = ("github", "huggingface", "cloudflare", "dns", "receipts")
@@ -87,18 +88,20 @@ def project(estate, *, now=None):
         # Links mean only "observed as a collector of this snapshot".
         links.append({"source": node["id"], "target": "snapshot:estate", "kind": "observed_in"})
     states = [n["truth_state"] for n in nodes]
+    source_sha = digest({
+        "source_generated_at": stamp,
+        "observations": [
+            (n["id"], n["truth_state"], n["observed_at"], n["evidence_ref_sha256"])
+            for n in nodes
+        ],
+    })
     body = {
         "schema": SCHEMA,
         "scope": "read_only_collector_projection",
         "generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         "source_generated_at": stamp,
-        "source_snapshot_sha256": digest({
-            "source_generated_at": stamp,
-            "observations": [
-                (n["id"], n["truth_state"], n["observed_at"], n["evidence_ref_sha256"])
-                for n in nodes
-            ],
-        }),
+        "source_snapshot_sha256": source_sha,
+        "release_fabric": project_release_fabric(nodes, source_sha),
         "nodes": [{"id": "snapshot:estate", "kind": "snapshot", "claim_scope": "projection_only", "action_authorized": False}, *nodes],
         "links": links,
         "rollup": roll_up(states),
