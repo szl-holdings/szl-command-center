@@ -50,7 +50,7 @@ async function render(estate, verticals, options = {}) {
         name === 'verticals' ? verticals :
           graphFailure ? { reason_code: 'UPSTREAM_FAILURE' } :
             (options.ontology || { reason_code: 'FEATURE_NOT_ADMITTED' });
-      return { ok, status: 503, json: async () => payload };
+      return { ok, status: ok ? 200 : 503, json: async () => payload };
     },
   });
   await new Promise(resolve => setImmediate(resolve));
