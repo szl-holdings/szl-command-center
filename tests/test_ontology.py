@@ -61,6 +61,20 @@ class OntologyContractTests(unittest.TestCase):
         e["collectors"]["github"]["truth_state"] = "APPROVED"
         self.assertEqual(project(e, now=NOW)["nodes"][1]["truth_state"], "UNAVAILABLE")
 
+    def test_nonstring_unhashable_truth_state_denied_without_exception(self):
+        e = estate()
+        e["collectors"]["github"]["truth_state"] = ["VERIFIED"]
+        out = project(e, now=NOW)
+        self.assertEqual(out["nodes"][1]["truth_state"], "UNAVAILABLE")
+        self.assertNotEqual(out["rollup"], "VERIFIED")
+
+    def test_whitespace_evidence_identity_downgrades(self):
+        e = estate()
+        e["collectors"]["github"]["evidence_ref"] = "  "
+        out = project(e, now=NOW)
+        self.assertEqual(out["nodes"][1]["truth_state"], "UNKNOWN")
+        self.assertIsNone(out["nodes"][1]["evidence_ref_sha256"])
+
     def test_checksum_deterministic_and_tamper_visible(self):
         first = project(estate(), now=NOW)
         second = project(estate(), now=NOW)
