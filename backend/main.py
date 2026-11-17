@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import convergence, verticals as verticals_mod
+from . import convergence, public_preview, verticals as verticals_mod
 from .cache import ResponseCache
 from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
@@ -105,11 +105,19 @@ def _live_or_snapshot(name: str, producer) -> JSONResponse:
 
 @app.get("/api/estate")
 def api_estate() -> JSONResponse:
+    if public_preview.active():
+        # The public research preview cannot run private-provider collectors
+        # or serve a retained privately collected/snapshot payload.
+        return JSONResponse(public_preview.estate(),
+                            headers={"Cache-Control": "no-store"})
     return _live_or_snapshot("estate", lambda: _cached("estate", _estate))
 
 
 @app.get("/api/verticals")
 def api_verticals() -> JSONResponse:
+    if public_preview.active():
+        return JSONResponse(public_preview.verticals(),
+                            headers={"Cache-Control": "no-store"})
     payload = _cached("verticals", verticals_mod.collect)
     snap = _snapshot("verticals")
     verticals = payload.get("verticals") if isinstance(payload, dict) else None
@@ -137,8 +145,10 @@ def api_ontology() -> JSONResponse:
             status_code=503,
             headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
         )
+    source = (public_preview.estate() if public_preview.active()
+              else _cached("estate", _estate))
     return JSONResponse(
-        project_ontology(_cached("estate", _estate)),
+        project_ontology(source),
         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
     )
 

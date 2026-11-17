@@ -211,3 +211,38 @@ The existing GitHub and Cloudflare panels may remain UNAVAILABLE in public
 preview without scoped credentials. Do not add general-purpose private tokens
 solely to make public dashboard metrics appear green. A green
 `/api/source-manifest` does not override independent production gates.
+
+## Public-preview versus privileged operator evidence
+
+The deployed Docker image is explicitly `SZL_COMMAND_CENTER_MODE=public_preview`
+and also contains a source-manifest marker, so an environment override cannot
+silently turn its public HTTP endpoints into a privileged operations console.
+The five legacy estate collectors (GitHub organization, Hugging Face account,
+Cloudflare zone, DNS, receipt verifier) and live vertical repository scans
+**are not invoked from public-preview HTTP routes**. The resulting
+`/api/estate` and `/api/verticals` use explicit `UNAVAILABLE` envelopes
+with reason `PUBLIC_PREVIEW_PRIVILEGED_COLLECTOR_NOT_ADMITTED`. Known vertical
+repo-name mappings are static source metadata, never a live repo census.
+Neither private provider credentials nor cached/historical privately collected
+snapshots may populate those public routes. The ontology projection, when
+separately admitted, inherits the same public boundary and can grant no action.
+
+`/api/convergence`, `/api/source-manifest` and the public, non-paying
+inference snapshot remain independently observable with their existing evidence
+limits; no missing operator evidence is promoted. The preview's 0/5
+privileged-collector status is an honest **scope boundary**, not five
+verified operational services.
+
+A private operator console is a **separate deployment and admission task**:
+authenticate the user at the application ingress with an independently verified
+identity token and audience, scope short-lived provider credentials, enforce
+role-level data visibility, and publish only separately reviewed/redacted
+receipts to this public preview. Merely setting `GH_TOKEN`, `HF_TOKEN`,
+`CLOUDFLARE_API_TOKEN`, installing `gh` or `dig`, or passing a
+self-declared proxy header does **not** authenticate the viewer. No private
+console or token-based bypass is activated by this change.
+
+The Docker CI now injects harmless dummy credentials and asserts that the
+public endpoints perform no privileged inventory admission or live repo
+collection. This boundary remains active even when the Space environment
+is changed to a different mode after the image was built.
