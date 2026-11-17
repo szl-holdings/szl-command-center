@@ -788,3 +788,41 @@ body {
     animation: none !important;
   }
 }
+
+
+/* Evidence Ontology — read-only, source-bounded status grid. */
+.ontology-graph { min-height: 4.75rem; }
+.ontology-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+}
+.ontology-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--hairline);
+}
+.ontology-source strong { text-transform: uppercase; font-size: var(--text-sm); }
+.ontology-source .mono {
+  flex-basis: 100%;
+  margin-left: calc(var(--space-2) + 0.5rem);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.ontology-marker {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  color: var(--gray);
+}
+.ontology-marker-VERIFIED { color: var(--green); background: var(--green); }
+.ontology-marker-UNKNOWN { color: var(--amber); background: var(--amber); }
+.ontology-marker-UNAVAILABLE { color: var(--gray); background: transparent; }

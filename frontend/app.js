@@ -715,8 +715,56 @@
     setFoot('foot-' + id, { evidence_ref: endpoint, reason: reason });
   }
 
+  function renderOntologyUnavailable(reason) {
+    var host = el('ontology-graph');
+    clear(host);
+    host.appendChild(errBlock('NO ADMITTED GRAPH', reason, null));
+    var badge = el('ontology-chip');
+    badge.replaceWith(Object.assign(chip('UNAVAILABLE'), { id: 'ontology-chip' }));
+    el('ontology-foot').textContent = 'READ ONLY · no actions · evidence not current';
+  }
+
+  function renderOntology(payload) {
+    var host = el('ontology-graph');
+    clear(host);
+    var badge = el('ontology-chip');
+    if (!payload || payload.schema !== 'szl.readonly.evidence_graph.v1' ||
+        !Array.isArray(payload.nodes) || !payload.authorization ||
+        payload.authorization.can_execute_actions !== false ||
+        payload.nodes.length !== 6) {
+      renderOntologyUnavailable('INVALID_GRAPH_CONTRACT');
+      return;
+    }
+    var replacement = chip(payload.rollup);
+    replacement.id = 'ontology-chip';
+    badge.replaceWith(replacement);
+    var list = document.createElement('ul');
+    list.className = 'ontology-sources';
+    payload.nodes.filter(function (node) { return node.kind === 'evidence_source'; }).forEach(function (node) {
+      var item = document.createElement('li');
+      item.className = 'ontology-source';
+      var marker = document.createElement('span');
+      marker.className = 'ontology-marker ontology-marker-' + (THEME[node.truth_state] ? node.truth_state : 'UNAVAILABLE');
+      marker.setAttribute('aria-hidden', 'true');
+      var label = document.createElement('strong');
+      label.textContent = node.label;
+      var state = document.createElement('span');
+      state.textContent = node.truth_state + ' · ' + node.reason_code;
+      state.className = 'mono';
+      item.appendChild(marker);
+      item.appendChild(label);
+      item.appendChild(state);
+      list.appendChild(item);
+    });
+    host.appendChild(list);
+    el('ontology-foot').textContent =
+      'READ ONLY · source-bound SHA256 ' + payload.source_snapshot_sha256.slice(0, 16) +
+      ' · independent witness: NOT ESTABLISHED · actions: DENIED';
+  }
+
   function refresh() {
-    var results = { estate: false, verticals: false };
+    var results = { estate: false, verticals: false, ontology: false };
+    var graph = null;
     var errors = {};
     var estateP = fetchJson('/api/estate').then(function (d) {
       if (!validEstate(d)) throw new Error('Invalid estate response');
@@ -735,7 +783,22 @@
       errors.verticals = String(e);
     });
 
-    return Promise.allSettled([estateP, vertP]).then(function () {
+    var graphP = fetchJson('/api/ontology').then(function (d) {
+      if (!d || d.schema !== 'szl.readonly.evidence_graph.v1') throw new Error('Invalid ontology');
+      graph = d;
+      results.ontology = true;
+    }).catch(function () {
+      graph = null;
+    });
+    return Promise.allSettled([estateP, vertP, graphP]).then(function () {
+      var bound = Boolean(lastEstate && graph &&
+        graph.source_generated_at === lastEstate.generated_at &&
+        graph.authorization && graph.authorization.can_execute_actions === false);
+      if (bound) {
+        renderOntology(graph);
+      } else {
+        renderOntologyUnavailable(graph ? 'SOURCE_SNAPSHOT_MISMATCH' : 'FEATURE_NOT_ADMITTED_OR_UNAVAILABLE');
+      }
       renderSnapshotNotice();
       if (lastEstate) {
         renderStrip(lastEstate, lastVerticals);
@@ -763,9 +826,12 @@
         renderUnavailablePanel('verticals', '/api/verticals', errors.verticals);
       }
       renderPanelChips();
-      if (results.estate || results.verticals) {
-        var partial = !(results.estate && results.verticals);
-        setPoll(partial ? 'UNKNOWN' : 'VERIFIED', partial ? 'one endpoint unreachable' : null);
+      if (results.estate || results.verticals || results.ontology) {
+        var fullyObserved = Boolean(bound && results.estate && results.verticals && results.ontology);
+        var estateVerified = fullyObserved && lastEstate.summary &&
+          lastEstate.summary.estate_state === 'VERIFIED' && graph.rollup === 'VERIFIED';
+        setPoll(estateVerified ? 'VERIFIED' : 'UNKNOWN',
+          estateVerified ? null : 'collection, binding or evidence incomplete');
       } else {
         setPoll('UNAVAILABLE', 'current observations unavailable');
       }

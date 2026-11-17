@@ -28,6 +28,7 @@ from .cache import ResponseCache
 from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
 
+from .ontology import project as project_ontology
 from .inference import router as inference_router
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
@@ -117,6 +118,21 @@ def api_verticals() -> JSONResponse:
     ):
         payload = {**payload, "_historical_snapshot": snap}
     return JSONResponse(payload)
+
+
+@app.get("/api/ontology")
+def api_ontology() -> JSONResponse:
+    """Disabled until admission; no independent data sources or action rights."""
+    if os.environ.get("SZL_ONTOLOGY_READONLY_ENABLED") != "1":
+        return JSONResponse(
+            {"status": "UNAVAILABLE", "reason_code": "FEATURE_NOT_ADMITTED"},
+            status_code=503,
+            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+        )
+    return JSONResponse(
+        project_ontology(_cached("estate", _estate)),
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+    )
 
 
 @app.get("/api/health")
