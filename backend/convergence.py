@@ -202,6 +202,14 @@ def collect(*, head_reader: Callable[[], str] | None = None,
             if type(sha) is not str or not SHA40.fullmatch(sha):
                 raise InvalidObservation("INVALID_SHA")
             return sha
+        except HTTPError as exc:
+            # A status code is actionable; never expose headers, URLs or tokens.
+            status = exc.code
+            if type(status) is int and 400 <= status <= 599:
+                blockers.append("GITHUB_MAIN_" + phase + "_HTTP_" + str(status))
+            else:
+                blockers.append("GITHUB_MAIN_" + phase + "_UNAVAILABLE")
+            return None
         except Exception:
             blockers.append("GITHUB_MAIN_" + phase + "_UNAVAILABLE")
             return None
