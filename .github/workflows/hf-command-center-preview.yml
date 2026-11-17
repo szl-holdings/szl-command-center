@@ -45,7 +45,7 @@ jobs:
         env:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
-          docker run --detach --name szl-cc-admission -p 127.0.0.1:17860:7860 szl-command-center:admission
+          docker run --detach --name szl-cc-admission -p 127.0.0.1:17860:7860 -e GH_TOKEN=CI_FAKE_GH_TOKEN -e HF_TOKEN=CI_FAKE_HF_TOKEN -e CLOUDFLARE_API_TOKEN=CI_FAKE_CF_TOKEN szl-command-center:admission
           python - <<'PY'
           import json, os, time, urllib.request
           url = "http://127.0.0.1:17860/api/source-manifest"
@@ -63,6 +63,30 @@ jobs:
                   if attempt == 29:
                       raise
                   time.sleep(2)
+          PY
+      - name: Verify public preview boundary even with injected dummy credentials
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.request import urlopen
+          base = "http://127.0.0.1:17860"
+          with urlopen(base + "/api/estate", timeout=5) as r:
+              estate = json.load(r)
+          assert estate["scope"] == "public_preview"
+          assert estate["summary"]["panels_total"] == 5
+          assert estate["summary"]["panels_verified"] == 0
+          assert not any(value["truth_state"] == "VERIFIED"
+                         for value in estate["collectors"].values())
+          assert all(value["reason"] == "PUBLIC_PREVIEW_PRIVILEGED_COLLECTOR_NOT_ADMITTED"
+                     for value in estate["collectors"].values())
+          assert "_historical_snapshot" not in estate
+          with urlopen(base + "/api/verticals", timeout=5) as r:
+              verticals = json.load(r)
+          assert verticals["scope"] == "public_preview"
+          assert len(verticals["verticals"]) == 5
+          assert all(v["truth_state"] == "UNAVAILABLE" for v in verticals["verticals"])
+          assert "CI_FAKE_" not in json.dumps({"estate": estate, "verticals": verticals})
+          print("public_boundary_fail_closed_under_dummy_credentials")
           PY
       - name: Stop isolated container
         if: always()

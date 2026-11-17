@@ -1,7 +1,7 @@
 # Derived from protected GitHub main by scripts/build_command_center_space.py.
 # Fixed OCI index digest for official current Python 3.12 slim Bookworm (2026-11-17).
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 SZL_COMMAND_CENTER_MODE=public_preview
 WORKDIR /app
 COPY requirements-space.txt /app/requirements-space.txt
 RUN python -m pip install --disable-pip-version-check --no-cache-dir -r requirements-space.txt && python -m pip check
