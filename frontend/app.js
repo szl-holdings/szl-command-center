@@ -800,7 +800,15 @@
       return r.json();
     }).then(function (d) {
       if (graphDisabled) return;
-      if (!d || d.schema !== 'szl.readonly.evidence_graph.v1') throw new Error('Invalid ontology');
+      if (!d || d.schema !== 'szl.readonly.evidence_graph.v1' ||
+          !Array.isArray(d.nodes) || d.nodes.length !== 6 ||
+          !d.authorization || d.authorization.can_execute_actions !== false ||
+          typeof d.source_generated_at !== 'string' ||
+          typeof d.source_snapshot_sha256 !== 'string' ||
+          !/^[0-9a-f]{64}$/.test(d.source_snapshot_sha256) ||
+          (d.rollup !== 'VERIFIED' && d.rollup !== 'UNKNOWN' && d.rollup !== 'UNAVAILABLE')) {
+        throw new Error('Invalid ontology contract');
+      }
       graph = d;
       results.ontology = true;
     }).catch(function () {
