@@ -261,6 +261,16 @@ test('source snapshot mismatch is visibly unavailable rather than silently reuse
   assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
 });
 
+test('malformed ontology digest cannot promote status or throw an uncaught error', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  graph.source_snapshot_sha256 = null;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
 test('ontology cannot grant actions through a fabricated authorization flag', async () => {
   const [estate, verticals] = fixture(false);
   const graph = graphFixture(estate);
