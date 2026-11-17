@@ -102,6 +102,28 @@ class MainReaderTests(unittest.TestCase):
         with self.assertRaisesRegex(cv.InvalidObservation, "JSON_REQUIRED"):
             cv._head()
 
+    def test_rate_status_is_safe_and_actionable_in_observation(self):
+        from urllib.error import HTTPError
+        for status in (403, 429):
+            with self.subTest(status=status):
+                def denied():
+                    raise HTTPError(cv.GITHUB_MAIN_URL, status,
+                                    "PRIVATE_DIAGNOSTIC_DO_NOT_EXPOSE",
+                                    {"Authorization": "FAKE_TOKEN_1"}, None)
+                def unavailable(_url):
+                    raise OSError("PRIVATE_HTTP_ERROR_DO_NOT_EXPOSE")
+                report = cv.collect(head_reader=denied, fetcher=unavailable,
+                                    clock=lambda: "2026-11-17T05:40:00Z")
+                self.assertEqual(report["source"]["state"], "UNKNOWN")
+                self.assertFalse(report["observational_convergence"])
+                self.assertIn("GITHUB_MAIN_BEFORE_HTTP_" + str(status),
+                              report["blocker_codes"])
+                self.assertIn("GITHUB_MAIN_AFTER_HTTP_" + str(status),
+                              report["blocker_codes"])
+                output = json.dumps(report)
+                self.assertNotIn("PRIVATE_DIAGNOSTIC", output)
+                self.assertNotIn("FAKE_TOKEN", output)
+
     def test_authenticated_rate_limit_has_no_unauthenticated_retry(self):
         from urllib.error import HTTPError
         self.opener.open.side_effect = HTTPError(cv.GITHUB_MAIN_URL, 403,
