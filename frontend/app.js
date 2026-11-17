@@ -783,7 +783,23 @@
       errors.verticals = String(e);
     });
 
-    var graphP = fetchJson('/api/ontology').then(function (d) {
+    var graphDisabled = false;
+    var graphP = fetch(apiBase() + '/api/ontology', {
+      headers: { Accept: 'application/json' }, cache: 'no-store',
+    }).then(function (r) {
+      if (r.status === 503) {
+        return r.json().then(function (body) {
+          if (body && body.reason_code === 'FEATURE_NOT_ADMITTED') {
+            graphDisabled = true;
+            return null;
+          }
+          throw new Error('Ontology HTTP 503');
+        });
+      }
+      if (!r.ok) throw new Error('Ontology HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (graphDisabled) return;
       if (!d || d.schema !== 'szl.readonly.evidence_graph.v1') throw new Error('Invalid ontology');
       graph = d;
       results.ontology = true;
@@ -827,9 +843,16 @@
       }
       renderPanelChips();
       if (results.estate || results.verticals || results.ontology) {
-        var fullyObserved = Boolean(bound && results.estate && results.verticals && results.ontology);
-        var estateVerified = fullyObserved && lastEstate.summary &&
-          lastEstate.summary.estate_state === 'VERIFIED' && graph.rollup === 'VERIFIED';
+        var baseVerified = Boolean(results.estate && results.verticals &&
+          lastEstate && lastEstate.summary && lastEstate.summary.estate_state === 'VERIFIED' &&
+          lastVerticals && Array.isArray(lastVerticals.verticals) &&
+          lastVerticals.verticals.length > 0 &&
+          lastVerticals.verticals.every(function (v) { return v.truth_state === 'VERIFIED'; }));
+        // An explicitly disabled optional graph does not demote an independently
+        // qualified base dashboard. An unexpected graph failure or conflicting
+        // graph observation MUST downgrade the overall poll status.
+        var graphQualified = graphDisabled || Boolean(bound && graph && graph.rollup === 'VERIFIED');
+        var estateVerified = baseVerified && graphQualified;
         setPoll(estateVerified ? 'VERIFIED' : 'UNKNOWN',
           estateVerified ? null : 'collection, binding or evidence incomplete');
       } else {
