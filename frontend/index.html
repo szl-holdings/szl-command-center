@@ -86,6 +86,19 @@
     <p id="snapshot-notice" class="panel-foot mono" role="status" hidden></p>
 
     <main class="board">
+      <section class="panel span-12" aria-labelledby="h-convergence">
+        <header class="panel-head">
+          <h2 id="h-convergence">SOURCE / STORAGE / EXECUTION — TEMPORAL WITNESS</h2>
+          <span class="chip chip-gray" id="chip-convergence" data-testid="status-convergence">SYNC</span>
+        </header>
+        <div class="verticals" id="convergence" aria-live="polite">
+          <article class="vcard"><span class="skel skel-line"></span><span class="skel skel-block"></span></article>
+        </div>
+        <footer class="panel-foot mono" id="foot-convergence">
+          Unsigned, read-only observations; source declarations are not a release certificate.
+        </footer>
+      </section>
+
       <section class="panel span-12" aria-labelledby="h-verticals">
         <header class="panel-head">
           <h2 id="h-verticals">VERTICALS</h2>
@@ -163,5 +176,6 @@
     </footer>
 
     <script src="/app.js" defer></script>
+    <script src="/convergence.js" defer></script>
   </body>
 </html>
