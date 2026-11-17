@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import verticals as verticals_mod
+from . import convergence, verticals as verticals_mod
 from .cache import ResponseCache
 from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
@@ -117,6 +117,12 @@ def api_verticals() -> JSONResponse:
     ):
         payload = {**payload, "_historical_snapshot": snap}
     return JSONResponse(payload)
+
+
+@app.get("/api/convergence")
+def api_convergence() -> JSONResponse:
+    """Read-only main/runtime/lease witness, not deployment approval."""
+    return JSONResponse(_cached("convergence", convergence.collect))
 
 
 @app.get("/api/health")
