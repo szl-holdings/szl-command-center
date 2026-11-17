@@ -1,0 +1,4 @@
+# The container runtime is independently pinned from development dependencies.
+fastapi==0.143.2
+uvicorn==0.54.0
+requests==2.33.0

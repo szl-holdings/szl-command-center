@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI
@@ -29,6 +30,7 @@ from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
 
 from .ontology import project as project_ontology
+from .source_manifest import verify as verify_source_manifest
 from .inference import router as inference_router
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
@@ -139,6 +141,14 @@ def api_ontology() -> JSONResponse:
         project_ontology(_cached("estate", _estate)),
         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
     )
+
+
+@app.get("/api/source-manifest")
+def api_source_manifest() -> JSONResponse:
+    """Self-consistency of local Docker bundle bytes, never signed provenance."""
+    report = verify_source_manifest(Path(__file__).resolve().parent.parent)
+    status = 200 if report["status"] == "SELF_CONSISTENT" else 503
+    return JSONResponse(report, status_code=status, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/health")

@@ -36,6 +36,7 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/estate` | One JSON tree: github, huggingface, cloudflare, dns, receipts + summary |
 | `GET /api/verticals` | Five verticals, repos, CI health, open-issue counts                  |
 | `GET /api/convergence` | Unsigned temporal witness of main→both origins→seven-store preservation→frontier readiness; never release authorization |
+| `GET /api/source-manifest` | Read-only local Docker source-byte self-consistency; never signed origin or action authority |
 | `GET /api/health` | Liveness                                                                 |
 | `GET /inference` | Python-served measured inference showcase card                         |
 | `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
@@ -174,3 +175,39 @@ the previously displayed observation.
 Offline regression suites include `tests/test_convergence.py`,
 `tests/test_convergence_route.py`, and
 `tests/test_convergence_display.cjs`.
+
+## Derived Hugging Face Docker preview
+
+The canonical implementation stays in GitHub. A public, read-only preview
+may be derived into `SZLHOLDINGS/szl-command-center`, with a pinned
+official Python 3.12 OCI base digest, pinned runtime requirements and a
+non-root listener on port 7860. The publisher uploads only the selected
+tracked application payload and the generated metadata; `.git`, secrets,
+test credentials and unrelated local files are not copied.
+
+`scripts/build_command_center_space.py` builds an exact file table with
+SHA-256 digests. `/api/source-manifest` independently measures those bytes
+inside the running container. This is an **unsigned self-consistency check**,
+not a GitHub source signature or proof of publisher identity.
+
+`scripts/publish_command_center_space.py` defaults to read-only preflight.
+`--execute` permits one upload only from a clean local `main` with HEAD
+equal to the remote `main`, requires HF organization membership, uses
+Hub parent-commit concurrency protection, verifies immutable Hub file bytes,
+then requires an exact live source-manifest readback. It cannot mark model
+quality, production readiness, payment settlement or execution authorization
+as established. It does not create a DNS alias or grant secret access.
+
+The CI Docker contract builds the exact generated bundle and exercises the
+route inside an isolated container before promotion. Runbook example:
+
+```sh
+python scripts/publish_command_center_space.py --receipt ./preflight.json
+# Only within an explicitly approved preview publication:
+python scripts/publish_command_center_space.py --execute --receipt ./published.json
+```
+
+The existing GitHub and Cloudflare panels may remain UNAVAILABLE in public
+preview without scoped credentials. Do not add general-purpose private tokens
+solely to make public dashboard metrics appear green. A green
+`/api/source-manifest` does not override independent production gates.
