@@ -39,12 +39,26 @@ async function render(estate, verticals, options = {}) {
     setInterval: (callback, ms) => { if (ms === 30000) poll = callback; return 0; },
     fetch: async url => {
       requests.push(url);
-      const name = url.endsWith('/estate') ? 'estate' : 'verticals';
-      return { ok: !failed.has(name), status: 503, json: async () => name === 'estate' ? estate : verticals };
+      const name = url.endsWith('/estate') ? 'estate' :
+        url.endsWith('/ontology') ? 'ontology' : 'verticals';
+      // Explicit feature-disabled response is not the same as a failed endpoint.
+      const graphFailure = name === 'ontology' &&
+        (options.ontologyFailure || failed.has('ontology'));
+      const ok = name === 'ontology' ? Boolean(options.ontology) && !graphFailure :
+        !failed.has(name);
+      const payload = name === 'estate' ? estate :
+        name === 'verticals' ? verticals :
+          graphFailure ? { reason_code: 'UPSTREAM_FAILURE' } :
+            (options.ontology || { reason_code: 'FEATURE_NOT_ADMITTED' });
+      const response = { ok, status: ok ? 200 : 503, json: async () => payload };
+      if (options.defer && options.defer.enabled) {
+        return new Promise(resolve => options.defer.pending.push(() => resolve(response)));
+      }
+      return response;
     },
   });
   await new Promise(resolve => setImmediate(resolve));
-  return { ids, requests, async pollFailures(names) {
+  return { ids, requests, startPoll() { return poll(); }, async pollFailures(names) {
     failed = new Set(names);
     await poll();
   }, async pollPayload(name, payload) {
@@ -102,13 +116,13 @@ function healthyFixture() {
 test('unmodified source uses same-origin API paths on HTTPS and alternate dev ports', async () => {
   for (const host of ['command.example.test', 'localhost:9000']) {
     const { requests } = await render(...fixture(false), { host });
-    assert.deepEqual(requests, ['/api/estate', '/api/verticals']);
+    assert.deepEqual(requests, ['/api/estate', '/api/verticals', '/api/ontology']);
   }
 });
 
 test('a configured preview proxy is preserved', async () => {
   const { requests } = await render(...fixture(false), { host: 'preview.example.test', proxy: 'https://backend.example.test' });
-  assert.deepEqual(requests, ['https://backend.example.test/api/estate', 'https://backend.example.test/api/verticals']);
+  assert.deepEqual(requests, ['https://backend.example.test/api/estate', 'https://backend.example.test/api/verticals', 'https://backend.example.test/api/ontology']);
 });
 
 test('failed estate poll clears previous green chips and counts while verticals remain current', async () => {
@@ -177,4 +191,131 @@ test('malformed vertical responses clear previously verified vertical state', as
     assert.match(browser.ids.get('verticals').textContent, /Invalid verticals response/);
     assert.equal(browser.ids.get('chip-feed').textContent, 'VERIFIED');
   }
+});
+
+
+function graphFixture(estate, sourceStamp = estate.generated_at) {
+  const sources = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
+  return {
+    schema: 'szl.readonly.evidence_graph.v1',
+    source_generated_at: sourceStamp,
+    source_snapshot_sha256: 'a'.repeat(64),
+    content_sha256: 'b'.repeat(64),
+    rollup: 'UNKNOWN',
+    authorization: { mode: 'READ_ONLY', can_execute_actions: false },
+    provenance: { snapshot_signature: 'NOT_ESTABLISHED' },
+    total_sources: 5, verified_sources: 0,
+    links: sources.map(name => ({ source: 'source:' + name,
+      target: 'snapshot:estate', kind: 'observed_in' })),
+    nodes: [{ kind: 'snapshot', id: 'snapshot:estate', action_authorized: false }, ...sources.map(
+      name => ({ id: 'source:' + name, kind: 'evidence_source',
+        label: name, truth_state: 'UNKNOWN', reason_code: 'SYNTHETIC',
+        action_authorized: false }))
+    ],
+  };
+}
+
+test('disabled evidence graph leaves historical successes unpromoted', async () => {
+  const [estate, verticals] = fixture(true);
+  const { ids, requests } = await render(estate, verticals);
+  assert.deepEqual(requests, ['/api/estate', '/api/verticals', '/api/ontology']);
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE/);
+  assert.equal(ids.get('strip-state').textContent, 'UNAVAILABLE');
+});
+
+test('feature-disabled graph preserves independently verified base dashboard', async () => {
+  const { ids } = await render(...healthyFixture());
+  assert.equal(ids.get('strip-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+});
+
+test('unexpected ontology outage downgrades otherwise verified base dashboard', async () => {
+  const [estate, verticals] = healthyFixture();
+  const { ids } = await render(estate, verticals, { ontologyFailure: true });
+  assert.equal(ids.get('strip-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+});
+
+test('admitted verified matching graph preserves independently verified base dashboard', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  graph.verified_sources = 5;
+  graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
+  assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
+});
+
+test('source-matched read-only ontology graph renders five evidence sources', async () => {
+  const [estate, verticals] = fixture(false);
+  const graph = graphFixture(estate);
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNKNOWN');
+  assert.match(ids.get('ontology-foot').textContent, /actions: DENIED/);
+  const content = ids.get('ontology-graph').textContent;
+  for (const name of ['github', 'huggingface', 'cloudflare', 'dns', 'receipts']) {
+    assert.match(content, new RegExp(name));
+  }
+  assert.doesNotMatch(content, /production.ready/i);
+});
+
+test('source snapshot mismatch is visibly unavailable rather than silently reused', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate, '2000-01-01T00:00:00Z');
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.match(ids.get('ontology-graph').textContent, /SOURCE_SNAPSHOT_MISMATCH/);
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('malformed ontology digest cannot promote status or throw an uncaught error', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  graph.source_snapshot_sha256 = null;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('duplicate graph source or missing edge cannot promote verified', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  graph.verified_sources = 5;
+  graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
+  graph.nodes[2].id = graph.nodes[1].id;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('older overlapping poll cannot repaint after newer failed observation', async () => {
+  const deferred = { enabled: false, pending: [] };
+  const browser = await render(...healthyFixture(), { defer: deferred });
+  assert.equal(browser.ids.get('poll-state').textContent, 'VERIFIED');
+  deferred.enabled = true;
+  const older = browser.startPoll();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(deferred.pending.length, 3);
+  deferred.enabled = false;
+  await browser.pollFailures(['estate']);
+  assert.equal(browser.ids.get('strip-state').textContent, 'UNAVAILABLE');
+  assert.equal(browser.ids.get('poll-state').textContent, 'UNKNOWN');
+  deferred.pending.forEach(resolve => resolve());
+  await older;
+  assert.equal(browser.ids.get('strip-state').textContent, 'UNAVAILABLE');
+  assert.equal(browser.ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('ontology cannot grant actions through a fabricated authorization flag', async () => {
+  const [estate, verticals] = fixture(false);
+  const graph = graphFixture(estate);
+  graph.authorization.can_execute_actions = true;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
 });
