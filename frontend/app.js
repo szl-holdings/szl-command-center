@@ -724,14 +724,61 @@
     el('ontology-foot').textContent = 'READ ONLY · no actions · evidence not current';
   }
 
+  var sourceNames = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
+
+  function validOntology(payload) {
+    if (!isRecord(payload) || payload.schema !== 'szl.readonly.evidence_graph.v1' ||
+        !isRecord(payload.authorization) || payload.authorization.mode !== 'READ_ONLY' ||
+        payload.authorization.can_execute_actions !== false ||
+        !isRecord(payload.provenance) || payload.provenance.snapshot_signature !== 'NOT_ESTABLISHED' ||
+        !Array.isArray(payload.nodes) || payload.nodes.length !== 6 ||
+        !Array.isArray(payload.links) || payload.links.length !== 5 ||
+        typeof payload.content_sha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(payload.content_sha256) ||
+        typeof payload.source_generated_at !== 'string' || !payload.source_generated_at ||
+        typeof payload.source_snapshot_sha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(payload.source_snapshot_sha256) ||
+        !Number.isInteger(payload.total_sources) || payload.total_sources !== 5 ||
+        !Number.isInteger(payload.verified_sources) || payload.verified_sources < 0 ||
+        payload.verified_sources > 5 || !isTruthState(payload.rollup)) return false;
+    var names = new Set();
+    var actual = 0;
+    for (var i = 0; i < payload.nodes.length; i++) {
+      var node = payload.nodes[i];
+      if (!isRecord(node) || node.action_authorized !== false) return false;
+      if (i === 0) {
+        if (node.id !== 'snapshot:estate' || node.kind !== 'snapshot') return false;
+        continue;
+      }
+      if (node.kind !== 'evidence_source' || typeof node.label !== 'string' ||
+          !sourceNames.includes(node.label) || node.id !== 'source:' + node.label ||
+          names.has(node.label) || !isTruthState(node.truth_state) ||
+          typeof node.reason_code !== 'string' || node.reason_code.length > 80) return false;
+      names.add(node.label);
+      if (node.truth_state === 'VERIFIED') actual++;
+    }
+    if (names.size !== 5 || actual !== payload.verified_sources) return false;
+    var states = payload.nodes.slice(1).map(function (n) { return n.truth_state; });
+    var expected = states.every(function (state) { return state === 'VERIFIED'; }) ? 'VERIFIED' :
+      states.every(function (state) { return state === 'UNAVAILABLE'; }) ? 'UNAVAILABLE' : 'UNKNOWN';
+    if (expected !== payload.rollup) return false;
+    var links = new Set();
+    for (var j = 0; j < payload.links.length; j++) {
+      var edge = payload.links[j];
+      if (!isRecord(edge) || edge.kind !== 'observed_in' ||
+          edge.target !== 'snapshot:estate' ||
+          !sourceNames.some(function (n) { return edge.source === 'source:' + n; }) ||
+          links.has(edge.source)) return false;
+      links.add(edge.source);
+    }
+    return links.size === 5;
+  }
+
   function renderOntology(payload) {
     var host = el('ontology-graph');
     clear(host);
     var badge = el('ontology-chip');
-    if (!payload || payload.schema !== 'szl.readonly.evidence_graph.v1' ||
-        !Array.isArray(payload.nodes) || !payload.authorization ||
-        payload.authorization.can_execute_actions !== false ||
-        payload.nodes.length !== 6) {
+    if (!validOntology(payload)) {
       renderOntologyUnavailable('INVALID_GRAPH_CONTRACT');
       return;
     }
@@ -762,24 +809,28 @@
       ' · independent witness: NOT ESTABLISHED · actions: DENIED';
   }
 
+  var refreshEpoch = 0;
   function refresh() {
+    var epoch = ++refreshEpoch;
+    var estateSnapshot = null;
+    var verticalSnapshot = null;
     var results = { estate: false, verticals: false, ontology: false };
     var graph = null;
     var errors = {};
     var estateP = fetchJson('/api/estate').then(function (d) {
       if (!validEstate(d)) throw new Error('Invalid estate response');
-      lastEstate = d;
+      estateSnapshot = d;
       results.estate = true;
     }).catch(function (e) {
-      lastEstate = null;
+      estateSnapshot = null;
       errors.estate = String(e);
     });
     var vertP = fetchJson('/api/verticals').then(function (d) {
       if (!validVerticals(d)) throw new Error('Invalid verticals response');
-      lastVerticals = d;
+      verticalSnapshot = d;
       results.verticals = true;
     }).catch(function (e) {
-      lastVerticals = null;
+      verticalSnapshot = null;
       errors.verticals = String(e);
     });
 
@@ -800,13 +851,7 @@
       return r.json();
     }).then(function (d) {
       if (graphDisabled) return;
-      if (!d || d.schema !== 'szl.readonly.evidence_graph.v1' ||
-          !Array.isArray(d.nodes) || d.nodes.length !== 6 ||
-          !d.authorization || d.authorization.can_execute_actions !== false ||
-          typeof d.source_generated_at !== 'string' ||
-          typeof d.source_snapshot_sha256 !== 'string' ||
-          !/^[0-9a-f]{64}$/.test(d.source_snapshot_sha256) ||
-          (d.rollup !== 'VERIFIED' && d.rollup !== 'UNKNOWN' && d.rollup !== 'UNAVAILABLE')) {
+      if (!validOntology(d)) {
         throw new Error('Invalid ontology contract');
       }
       graph = d;
@@ -815,6 +860,9 @@
       graph = null;
     });
     return Promise.allSettled([estateP, vertP, graphP]).then(function () {
+      if (epoch !== refreshEpoch) return;
+      lastEstate = estateSnapshot;
+      lastVerticals = verticalSnapshot;
       var bound = Boolean(lastEstate && graph &&
         graph.source_generated_at === lastEstate.generated_at &&
         graph.authorization && graph.authorization.can_execute_actions === false);
