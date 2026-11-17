@@ -38,11 +38,34 @@ class OntologyHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["source_generated_at"], CURRENT)
         self.assertEqual(response.json()["rollup"], "VERIFIED")
+        fabric = response.json()["release_fabric"]
+        self.assertEqual(fabric["stage_count"], 8)
+        self.assertEqual(fabric["unverified_dependency_count"], 9)
+        self.assertEqual(fabric["independently_qualified_stages"], 0)
+        self.assertEqual(fabric["basis_source_snapshot_sha256"], response.json()["source_snapshot_sha256"])
+        self.assertFalse(fabric["can_deploy"])
+        self.assertFalse(fabric["production_qualified"])
+        self.assertFalse(fabric["financial_revenue_verified"])
         self.assertEqual(response.json()["authorization"]["can_execute_actions"], False)
         self.assertNotIn("DO_NOT_LEAK", response.text)
         self.assertEqual(response.headers["X-Robots-Tag"], "noindex")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(collector.call_args.args[0], "estate")
+
+    def test_public_preview_does_not_inherit_private_estate_or_gain_authority(self):
+        with patch.dict(os.environ, {"SZL_ONTOLOGY_READONLY_ENABLED": "1"}), \
+             patch.object(main.public_preview, "active", return_value=True), \
+             patch.object(main, "_cached") as cached:
+            response = self.client.get("/api/ontology")
+        self.assertEqual(response.status_code, 200)
+        cached.assert_not_called()
+        fabric = response.json()["release_fabric"]
+        self.assertEqual(fabric["collector_verified_stages"], 0)
+        self.assertTrue(all(stage["collector_state"] == "UNAVAILABLE"
+                            for stage in fabric["stages"]))
+        self.assertFalse(fabric["production_qualified"])
+        self.assertFalse(fabric["can_deploy"])
+        self.assertNotIn("DO_NOT_LEAK", response.text)
 
     def test_frontend_contains_ontology_widget_and_javascript(self):
         html = self.client.get("/")
@@ -52,7 +75,13 @@ class OntologyHttpTests(unittest.TestCase):
         self.assertIn('id="ontology-graph"', html.text)
         self.assertIn("SOURCE_SNAPSHOT_MISMATCH", js.text)
         self.assertIn("ontology-sources", css.text)
-        self.assertNotIn("innerHTML =", js.text[js.text.index("function renderOntology(payload)"):js.text.index("function refresh()")])
+        self.assertIn("release-fabric-stages", css.text)
+        self.assertIn("function validReleaseFabric", js.text)
+        self.assertIn("function renderReleaseFabric", js.text)
+        self.assertIn("0/8 independently qualified", js.text)
+        self.assertIn("0/9 links proven", js.text)
+        # All untrusted source fields are emitted only through textContent.
+        self.assertNotIn("innerHTML =", js.text[js.text.index("function validReleaseFabric"):js.text.index("function refresh()")])
 
 
 if __name__ == "__main__":
