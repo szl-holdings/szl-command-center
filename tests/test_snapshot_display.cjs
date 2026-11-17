@@ -50,11 +50,15 @@ async function render(estate, verticals, options = {}) {
         name === 'verticals' ? verticals :
           graphFailure ? { reason_code: 'UPSTREAM_FAILURE' } :
             (options.ontology || { reason_code: 'FEATURE_NOT_ADMITTED' });
-      return { ok, status: ok ? 200 : 503, json: async () => payload };
+      const response = { ok, status: ok ? 200 : 503, json: async () => payload };
+      if (options.defer && options.defer.enabled) {
+        return new Promise(resolve => options.defer.pending.push(() => resolve(response)));
+      }
+      return response;
     },
   });
   await new Promise(resolve => setImmediate(resolve));
-  return { ids, requests, async pollFailures(names) {
+  return { ids, requests, startPoll() { return poll(); }, async pollFailures(names) {
     failed = new Set(names);
     await poll();
   }, async pollPayload(name, payload) {
@@ -198,10 +202,15 @@ function graphFixture(estate, sourceStamp = estate.generated_at) {
     source_snapshot_sha256: 'a'.repeat(64),
     content_sha256: 'b'.repeat(64),
     rollup: 'UNKNOWN',
-    authorization: { can_execute_actions: false },
-    nodes: [{ kind: 'snapshot', id: 'snapshot:estate' }, ...sources.map(
+    authorization: { mode: 'READ_ONLY', can_execute_actions: false },
+    provenance: { snapshot_signature: 'NOT_ESTABLISHED' },
+    total_sources: 5, verified_sources: 0,
+    links: sources.map(name => ({ source: 'source:' + name,
+      target: 'snapshot:estate', kind: 'observed_in' })),
+    nodes: [{ kind: 'snapshot', id: 'snapshot:estate', action_authorized: false }, ...sources.map(
       name => ({ id: 'source:' + name, kind: 'evidence_source',
-        label: name, truth_state: 'UNKNOWN', reason_code: 'SYNTHETIC' }))
+        label: name, truth_state: 'UNKNOWN', reason_code: 'SYNTHETIC',
+        action_authorized: false }))
     ],
   };
 }
@@ -234,6 +243,8 @@ test('admitted verified matching graph preserves independently verified base das
   const [estate, verticals] = healthyFixture();
   const graph = graphFixture(estate);
   graph.rollup = 'VERIFIED';
+  graph.verified_sources = 5;
+  graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
   assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
@@ -269,6 +280,36 @@ test('malformed ontology digest cannot promote status or throw an uncaught error
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
   assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('duplicate graph source or missing edge cannot promote verified', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate);
+  graph.rollup = 'VERIFIED';
+  graph.verified_sources = 5;
+  graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
+  graph.nodes[2].id = graph.nodes[1].id;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('older overlapping poll cannot repaint after newer failed observation', async () => {
+  const deferred = { enabled: false, pending: [] };
+  const browser = await render(...healthyFixture(), { defer: deferred });
+  assert.equal(browser.ids.get('poll-state').textContent, 'VERIFIED');
+  deferred.enabled = true;
+  const older = browser.startPoll();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(deferred.pending.length, 3);
+  deferred.enabled = false;
+  await browser.pollFailures(['estate']);
+  assert.equal(browser.ids.get('strip-state').textContent, 'UNAVAILABLE');
+  assert.equal(browser.ids.get('poll-state').textContent, 'UNKNOWN');
+  deferred.pending.forEach(resolve => resolve());
+  await older;
+  assert.equal(browser.ids.get('strip-state').textContent, 'UNAVAILABLE');
+  assert.equal(browser.ids.get('poll-state').textContent, 'UNKNOWN');
 });
 
 test('ontology cannot grant actions through a fabricated authorization flag', async () => {
