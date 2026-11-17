@@ -55,11 +55,11 @@ def project(estate, *, now=None):
         env = collectors.get(key)
         env = env if isinstance(env, dict) else {}
         state = env.get("truth_state")
-        if state not in STATES:
+        if type(state) is not str or state not in STATES:
             state = "UNAVAILABLE"
         ref = env.get("evidence_ref")
         observed = env.get("verified_at")
-        ref_valid = isinstance(ref, str) and 0 < len(ref) <= 2048
+        ref_valid = isinstance(ref, str) and bool(ref.strip()) and len(ref) <= 2048
         fresh = _fresh(observed, now)
         reason = "DIRECT_OBSERVATION"
         if not env:
