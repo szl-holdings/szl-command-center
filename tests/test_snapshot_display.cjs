@@ -39,8 +39,13 @@ async function render(estate, verticals, options = {}) {
     setInterval: (callback, ms) => { if (ms === 30000) poll = callback; return 0; },
     fetch: async url => {
       requests.push(url);
-      const name = url.endsWith('/estate') ? 'estate' : 'verticals';
-      return { ok: !failed.has(name), status: 503, json: async () => name === 'estate' ? estate : verticals };
+      const name = url.endsWith('/estate') ? 'estate' :
+        url.endsWith('/ontology') ? 'ontology' : 'verticals';
+      // The additional evidence endpoint is disabled by default, as in production.
+      const ok = name === 'ontology' ? Boolean(options.ontology) && !failed.has(name) :
+        !failed.has(name);
+      return { ok, status: 503, json: async () => name === 'estate' ? estate :
+        name === 'verticals' ? verticals : options.ontology };
     },
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -102,13 +107,13 @@ function healthyFixture() {
 test('unmodified source uses same-origin API paths on HTTPS and alternate dev ports', async () => {
   for (const host of ['command.example.test', 'localhost:9000']) {
     const { requests } = await render(...fixture(false), { host });
-    assert.deepEqual(requests, ['/api/estate', '/api/verticals']);
+    assert.deepEqual(requests, ['/api/estate', '/api/verticals', '/api/ontology']);
   }
 });
 
 test('a configured preview proxy is preserved', async () => {
   const { requests } = await render(...fixture(false), { host: 'preview.example.test', proxy: 'https://backend.example.test' });
-  assert.deepEqual(requests, ['https://backend.example.test/api/estate', 'https://backend.example.test/api/verticals']);
+  assert.deepEqual(requests, ['https://backend.example.test/api/estate', 'https://backend.example.test/api/verticals', 'https://backend.example.test/api/ontology']);
 });
 
 test('failed estate poll clears previous green chips and counts while verticals remain current', async () => {
@@ -177,4 +182,60 @@ test('malformed vertical responses clear previously verified vertical state', as
     assert.match(browser.ids.get('verticals').textContent, /Invalid verticals response/);
     assert.equal(browser.ids.get('chip-feed').textContent, 'VERIFIED');
   }
+});
+
+
+function graphFixture(estate, sourceStamp = estate.generated_at) {
+  const sources = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
+  return {
+    schema: 'szl.readonly.evidence_graph.v1',
+    source_generated_at: sourceStamp,
+    source_snapshot_sha256: 'a'.repeat(64),
+    content_sha256: 'b'.repeat(64),
+    rollup: 'UNKNOWN',
+    authorization: { can_execute_actions: false },
+    nodes: [{ kind: 'snapshot', id: 'snapshot:estate' }, ...sources.map(
+      name => ({ id: 'source:' + name, kind: 'evidence_source',
+        label: name, truth_state: 'UNKNOWN', reason_code: 'SYNTHETIC' }))
+    ],
+  };
+}
+
+test('disabled evidence graph leaves historical successes unpromoted', async () => {
+  const [estate, verticals] = fixture(true);
+  const { ids, requests } = await render(estate, verticals);
+  assert.deepEqual(requests, ['/api/estate', '/api/verticals', '/api/ontology']);
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE/);
+  assert.equal(ids.get('strip-state').textContent, 'UNAVAILABLE');
+});
+
+test('source-matched read-only ontology graph renders five evidence sources', async () => {
+  const [estate, verticals] = fixture(false);
+  const graph = graphFixture(estate);
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNKNOWN');
+  assert.match(ids.get('ontology-foot').textContent, /actions: DENIED/);
+  const content = ids.get('ontology-graph').textContent;
+  for (const name of ['github', 'huggingface', 'cloudflare', 'dns', 'receipts']) {
+    assert.match(content, new RegExp(name));
+  }
+  assert.doesNotMatch(content, /production.ready/i);
+});
+
+test('source snapshot mismatch is visibly unavailable rather than silently reused', async () => {
+  const [estate, verticals] = healthyFixture();
+  const graph = graphFixture(estate, '2000-01-01T00:00:00Z');
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.match(ids.get('ontology-graph').textContent, /SOURCE_SNAPSHOT_MISMATCH/);
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+test('ontology cannot grant actions through a fabricated authorization flag', async () => {
+  const [estate, verticals] = fixture(false);
+  const graph = graphFixture(estate);
+  graph.authorization.can_execute_actions = true;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
 });

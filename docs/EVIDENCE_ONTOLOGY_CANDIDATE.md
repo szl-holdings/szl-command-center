@@ -31,3 +31,5 @@ Exact-head ownership/review; hosted tests and browser end-to-end; private eviden
 ## Release requirement
 
 Do not enable this endpoint on public infrastructure until an authenticated access policy, privacy review, explicit owner approval, current-head CI, and a rollback plan have been verified. A staging release should record the exact GitHub head, image digest, collector source identities, browser trace, active access policy, and a durable receipt that can be independently read back. A green PR check alone does not satisfy production or collaborator-owned admission.
+
+- Hosted PR CI uncovered a legacy Node snapshot-renderer test that assumed exactly two fetches. The contract was expanded to exercise all three explicit same-origin/proxy endpoints, the disabled gate, matching source binding, stale-history restraint, and fabricated action-authority rejection. Final local Node harness: 14 passed, zero failures; Python suite: 90 passed. No test expectation was removed or bypassed.
