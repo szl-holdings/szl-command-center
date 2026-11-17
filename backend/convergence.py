@@ -108,7 +108,10 @@ def _reported_revision(doc):
 def _store_check(doc):
     failures = []
     if type(doc) is not dict:
-        return False, ["STORAGE_MISSING"], {}
+        return False, ["STORAGE_MISSING"], {
+            "epoch": None, "sequence": None, "heartbeat_age_s": None,
+            "healthy_stores": 0, "required_stores": len(STORES),
+        }
     lease = doc.get("lease")
     stores = doc.get("stores")
     if type(lease) is not dict:
