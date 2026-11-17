@@ -2,7 +2,7 @@
 
 Samples GitHub protected main before and after fixed, read-only HTTPS
 observations of both A11oy origins. A source declaration is NOT a byte-level
-deployment proof. No provider writes, credentials, or release approval.
+deployment proof. No provider writes, credential disclosure, or release approval.
 """
 from __future__ import annotations
 
