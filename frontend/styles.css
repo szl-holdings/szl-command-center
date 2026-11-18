@@ -296,7 +296,7 @@ body {
 
 .verticals {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -442,6 +442,8 @@ body {
   font-size: var(--text-xs);
   color: var(--amber);
   line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- Governance feed ---------- */
@@ -519,7 +521,7 @@ body {
 
 .dom-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--hairline);
@@ -557,6 +559,7 @@ body {
   font-size: var(--text-xs);
   color: var(--amber);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .dom-src {
@@ -714,6 +717,8 @@ body {
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
+  min-width: 0;
+  overflow-wrap: anywhere;
   border: 1px dashed color-mix(in oklab, var(--amber) 55%, transparent);
   font-size: var(--text-sm);
   color: var(--text-muted);
@@ -756,7 +761,7 @@ body {
 /* ---------- Responsive: read on a phone in a data center ---------- */
 
 @media (max-width: 1080px) {
-  .verticals { grid-template-columns: repeat(3, 1fr); }
+  .verticals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .strip { grid-template-columns: repeat(3, 1fr); }
   .cell:nth-child(3) { border-right: none; }
   .cell:nth-child(-n + 3) { border-bottom: 1px solid var(--hairline); }
@@ -765,7 +770,7 @@ body {
 
 @media (max-width: 820px) {
   .span-7, .span-5 { grid-column: span 12; }
-  .verticals { grid-template-columns: repeat(2, 1fr); }
+  .verticals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .receipts { grid-template-columns: 1fr; }
   .rc-verdict, .rc-demo { grid-row: auto; grid-column: auto; }
   .check { grid-template-columns: 12ch 1fr; }
@@ -780,7 +785,7 @@ body {
   .topbar-meta { flex-direction: column; align-items: flex-end; gap: var(--space-1); }
   .feed-row { grid-template-columns: 8ch 1fr auto; }
   .feed-sha { display: none; }
-  .dom-row { grid-template-columns: 1fr; }
+  .dom-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -932,4 +937,66 @@ body {
 @media (forced-colors: active) {
   .release-fabric-stage,
   .release-fabric-edges li { border-color: CanvasText; }
+}
+
+/* On-demand dependency withdrawal, deliberately not a release control. */
+.release-impact {
+  margin-top: var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-left: 3px solid var(--amber);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+}
+.release-impact h4 {
+  flex-basis: 100%;
+  margin: 0;
+}
+.release-impact label {
+  display: flex;
+  flex: 1 1 15rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.release-impact select,
+.release-impact button {
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 2px;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+.release-impact select { width: 100%; }
+.release-impact button {
+  color: var(--green);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.release-impact button:hover { border-color: var(--green); }
+.release-impact button:disabled { opacity: .55; cursor: wait; }
+.release-impact :is(select, button):focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.release-impact-result {
+  flex-basis: 100%;
+  color: var(--amber);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .release-impact button { width: 100%; }
+}
+@media (forced-colors: active) {
+  .release-impact { border-color: CanvasText; }
+  .release-impact :is(select, button) { border-color: CanvasText; }
 }

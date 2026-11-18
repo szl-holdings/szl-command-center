@@ -1,0 +1,83 @@
+{
+  "action_authorized": false,
+  "basis_release_fabric_sha256": "a7c0101687f99dd62921833d3ea44706b58e153201dab1a760fc4f7bbda71a92",
+  "basis_source_snapshot_sha256": "9e36590d321c0afbf0b1c3847bbb7787819e84f491a1ef0cd94d0383847f9bbf",
+  "can_deploy": false,
+  "collector_changes_count": 1,
+  "collector_stage_changes": [
+    {
+      "after": "UNAVAILABLE",
+      "before": "VERIFIED",
+      "stage": "github_source"
+    }
+  ],
+  "content_sha256": "6db2731329a0d1156383eac5b4a70056962c065c2da23d29a8adafb34cebfe61",
+  "exposed_stage_count": 7,
+  "fingerprint_is_signature": false,
+  "interpretation": "A bounded dependency-loss rehearsal over existing collector metadata. Exposed stages are theoretical prerequisite paths, not observed failures. No provider identities, model proofs, production, payment or authorization are admitted by this view.",
+  "mode": "HYPOTHETICAL_EVIDENCE_WITHDRAWAL",
+  "model_quality_verified": false,
+  "observation_changed": true,
+  "production_qualified": false,
+  "provider_state_changed": false,
+  "required_proof_state": "NOT_ESTABLISHED",
+  "schema": "szl.readonly.release_impact.v1",
+  "selected_source": "github",
+  "settlement_verified": false,
+  "source_modified": false,
+  "source_observation_assumed_after": "UNAVAILABLE",
+  "source_observation_before": "VERIFIED",
+  "structurally_exposed_edges": [
+    {
+      "binding_verified": false,
+      "required_binding": "GITHUB_TO_HF_ARTIFACT_BINDING",
+      "source": "github_source",
+      "target": "hf_catalog"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "SOURCE_TO_EDGE_CONFIG_BINDING",
+      "source": "github_source",
+      "target": "cloudflare_edge"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "SOURCE_TO_PACKAGE_PROVENANCE_BINDING",
+      "source": "github_source",
+      "target": "pypi_distribution"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "WEIGHTS_TO_EVALUATION_BINDING",
+      "source": "hf_catalog",
+      "target": "model_evaluation"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "WEIGHTS_TO_RUNTIME_BINDING",
+      "source": "hf_catalog",
+      "target": "runtime_deployment"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "EDGE_TO_RUNTIME_IDENTITY_BINDING",
+      "source": "cloudflare_edge",
+      "target": "runtime_deployment"
+    },
+    {
+      "binding_verified": false,
+      "required_binding": "RUNTIME_TO_SETTLEMENT_BINDING",
+      "source": "runtime_deployment",
+      "target": "payment_settlement"
+    }
+  ],
+  "structurally_exposed_stages": [
+    "github_source",
+    "hf_catalog",
+    "cloudflare_edge",
+    "model_evaluation",
+    "runtime_deployment",
+    "payment_settlement",
+    "pypi_distribution"
+  ]
+}

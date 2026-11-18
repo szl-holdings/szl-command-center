@@ -800,7 +800,55 @@
     return true;
   }
 
-  function renderReleaseFabric(fabric, host) {
+  function validReleaseImpact(result, basis, fabricSha, source) {
+    if (!isRecord(result) || result.schema !== 'szl.readonly.release_impact.v1' ||
+        result.mode !== 'HYPOTHETICAL_EVIDENCE_WITHDRAWAL' ||
+        result.selected_source !== source || result.basis_source_snapshot_sha256 !== basis ||
+        result.basis_release_fabric_sha256 !== fabricSha ||
+        result.required_proof_state !== 'NOT_ESTABLISHED' ||
+        result.production_qualified !== false || result.can_deploy !== false ||
+        result.action_authorized !== false || result.source_modified !== false ||
+        result.provider_state_changed !== false || result.model_quality_verified !== false ||
+        result.settlement_verified !== false || result.fingerprint_is_signature !== false ||
+        typeof result.content_sha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(result.content_sha256) ||
+        !Array.isArray(result.structurally_exposed_stages) ||
+        !Array.isArray(result.structurally_exposed_edges) ||
+        !Array.isArray(result.collector_stage_changes) ||
+        result.structurally_exposed_stages.length > releaseStageDefinitions.length ||
+        result.structurally_exposed_edges.length > releaseEdgeDefinitions.length ||
+        result.collector_stage_changes.length > releaseStageDefinitions.length ||
+        result.exposed_stage_count !== result.structurally_exposed_stages.length ||
+        result.collector_changes_count !== result.collector_stage_changes.length ||
+        ['VERIFIED', 'UNKNOWN', 'UNAVAILABLE'].indexOf(result.source_observation_before) < 0 ||
+        result.source_observation_assumed_after !== 'UNAVAILABLE') return false;
+    var seen = Object.create(null);
+    for (var i = 0; i < result.structurally_exposed_stages.length; i++) {
+      var stage = result.structurally_exposed_stages[i];
+      if (!releaseStageDefinitions.some(function (x) { return x[0] === stage; }) ||
+          seen[stage]) return false;
+      seen[stage] = true;
+    }
+    for (var j = 0; j < result.collector_stage_changes.length; j++) {
+      var change = result.collector_stage_changes[j];
+      if (!isRecord(change) || !seen[change.stage] ||
+          ['VERIFIED', 'UNKNOWN', 'UNAVAILABLE'].indexOf(change.before) < 0 ||
+          ['UNKNOWN', 'UNAVAILABLE'].indexOf(change.after) < 0 ||
+          change.before === change.after) return false;
+    }
+    for (var k = 0; k < result.structurally_exposed_edges.length; k++) {
+      var edge = result.structurally_exposed_edges[k];
+      if (!isRecord(edge) || edge.binding_verified !== false ||
+          !seen[edge.source] || !seen[edge.target] ||
+          !releaseEdgeDefinitions.some(function (x) {
+            return x[0] === edge.source && x[1] === edge.target &&
+              x[2] === edge.required_binding;
+          })) return false;
+    }
+    return true;
+  }
+
+  function renderReleaseFabric(fabric, host, basisSha) {
     var wrap = document.createElement('section');
     wrap.className = 'release-fabric';
     wrap.setAttribute('aria-label', 'Cross-platform release proof dependencies');
@@ -852,6 +900,88 @@
       edges.appendChild(item);
     });
     wrap.appendChild(edges);
+    // On-demand rehearsal only. No poll, controller, entitlement, model call or
+    // new provider read. The basis is the same WebCrypto-checked ontology.
+    var impactForm = document.createElement('div');
+    impactForm.className = 'release-impact';
+    impactForm.setAttribute('aria-label', 'Counterfactual loss of evidence');
+    var impactTitle = document.createElement('h4');
+    impactTitle.textContent = 'WHAT LOSES SUPPORT? · REHEARSAL ONLY';
+    impactForm.appendChild(impactTitle);
+    var impactLabel = document.createElement('label');
+    impactLabel.textContent = 'Withhold evidence source';
+    var impactSelect = document.createElement('select');
+    impactSelect.setAttribute('aria-label', 'Evidence source to withhold');
+    sourceNames.forEach(function (name) {
+      var option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      impactSelect.appendChild(option);
+    });
+    impactSelect.value = 'github';
+    impactLabel.appendChild(impactSelect);
+    impactForm.appendChild(impactLabel);
+    var impactButton = document.createElement('button');
+    impactButton.type = 'button';
+    impactButton.textContent = 'Rehearse loss';
+    impactForm.appendChild(impactButton);
+    var impactResult = document.createElement('p');
+    impactResult.className = 'mono release-impact-result';
+    impactResult.setAttribute('role', 'status');
+    impactResult.setAttribute('aria-live', 'polite');
+    impactResult.textContent = 'NOT RUN · source bytes and authority unchanged';
+    impactForm.appendChild(impactResult);
+    impactButton.onclick = async function () {
+      var selected = impactSelect.value;
+      if (sourceNames.indexOf(selected) < 0) {
+        impactResult.textContent = 'UNAVAILABLE · SOURCE_NOT_ALLOWED';
+        return;
+      }
+      var startEpoch = refreshEpoch;
+      impactButton.disabled = true;
+      impactResult.textContent = 'OBSERVING · read-only counterfactual';
+      try {
+        var endpoint = apiBase() + '/api/release-impact?source=' +
+          encodeURIComponent(selected) + '&basis=' + encodeURIComponent(basisSha);
+        var response = await fetch(endpoint, {
+          headers: { Accept: 'application/json' }, cache: 'no-store',
+        });
+        if (startEpoch !== refreshEpoch) return;
+        if (!response.ok) {
+          impactResult.textContent = response.status === 409
+            ? 'UNAVAILABLE · SOURCE_SNAPSHOT_CHANGED (refresh first)'
+            : 'UNAVAILABLE · rehearsal unavailable, no fallback';
+          return;
+        }
+        var result = await response.json();
+        if (!validReleaseImpact(result, basisSha, fabric.content_sha256, selected)) {
+          impactResult.textContent = 'UNAVAILABLE · IMPACT_CONTRACT_INVALID';
+          return;
+        }
+        var body = Object.assign({}, result);
+        delete body.content_sha256;
+        if (await graphSha256(body) !== result.content_sha256) {
+          impactResult.textContent = 'UNAVAILABLE · IMPACT_CHECKSUM_INVALID';
+          return;
+        }
+        if (startEpoch !== refreshEpoch) return;
+        var labels = result.structurally_exposed_stages.map(function (id) {
+          var item = releaseStageDefinitions.find(function (d) { return d[0] === id; });
+          return item[3];
+        });
+        impactResult.textContent = 'REHEARSAL: ' + selected + ' evidence withheld · ' +
+          result.collector_changes_count + ' metadata stages change · ' +
+          result.exposed_stage_count + ' structurally exposed: ' + labels.join(' → ') +
+          '. All links remain unproved. No actions, deployment or revenue authorized.';
+      } catch (error) {
+        if (startEpoch === refreshEpoch) {
+          impactResult.textContent = 'UNAVAILABLE · readback or checksum failure';
+        }
+      } finally {
+        impactButton.disabled = false;
+      }
+    };
+    wrap.appendChild(impactForm);
     var note = document.createElement('p');
     note.className = 'mono release-fabric-foot';
     note.textContent = 'RECOMPUTED UNSIGNED GRAPH SHA-256 ' + fabric.content_sha256.slice(0, 24) +
@@ -1013,7 +1143,7 @@
       list.appendChild(item);
     });
     host.appendChild(list);
-    renderReleaseFabric(payload.release_fabric, host);
+    renderReleaseFabric(payload.release_fabric, host, payload.source_snapshot_sha256);
     el('ontology-foot').textContent =
       'READ ONLY · three independent SHA-256 consistency checks passed · source ' +
       payload.source_snapshot_sha256.slice(0, 16) +

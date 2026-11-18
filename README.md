@@ -38,6 +38,7 @@ One command, no docker-compose. Open <http://localhost:8000>.
 | `GET /api/convergence` | Unsigned temporal witness of main→both origins→seven-store preservation→frontier readiness; never release authorization |
 | `GET /api/source-manifest` | Read-only local Docker source-byte self-consistency; never signed origin or action authority |
 | `GET /api/ontology` | **Disabled by default**: reuses existing estate cache for a read-only five-source ontology and eight-stage/nine-edge release proof graph; no independent qualification or authority |
+| `GET /api/release-impact?source=<five-source-name>&basis=<sha256>` | Same disabled-by-default gate/cache; one read-only, bound counterfactual source-loss rehearsal, never provider state or execution authority |
 | `GET /api/health` | Liveness                                                                 |
 | `GET /inference` | Python-served measured inference showcase card                         |
 | `GET /api/inference/snapshot` | Public evidence JSON: health, model exposure, x402 posture |
