@@ -61,6 +61,29 @@ Offline route and rendering checks: install `requirements-dev.txt`, then run
 `python -m unittest discover -s tests -v` and
 `node --test tests/test_snapshot_display.cjs` (Node 20 or newer).
 
+## Local Python Lake graph bridge (not a public endpoint)
+
+The **operator-only**, stdlib Python module
+[`backend/lake_operator_bridge.py`](backend/lake_operator_bridge.py)
+reads the canonical `szl-lake` evidence-graph JSON **only from
+127.0.0.1** when explicitly invoked as a local CLI. It validates
+source/selected denominators, bounded organ/decision graph shape,
+unsigned SHA3-256 graph checksum and explicit false authority flags.
+Redirects, unapproved source values, public-preview mode, malformed
+payloads and unavailable Lake are refused. It never starts Lake,
+runs inference, signs or appends a receipt, or changes Cloudflare/HF.
+
+Example, only after the Lake owner has admitted a local server:
+`py -3 -B -m backend.lake_operator_bridge --port 8088`
+
+This is **not** mounted as a FastAPI route and adds no data or private
+collectors to the hosted Command Center image. A local checksum
+match is not signer authentication, tenant authorization or
+production readiness. See [the source, tests, threat model and
+research-to-ecosystem contract](docs/LAKE_GRAPH_OPERATOR_BRIDGE.md).
+The independent `szl-formulas` EML paper experiment remains
+source-only; no new locked formula or publication is inferred.
+
 ## Collectors
 
 Every collector returns
