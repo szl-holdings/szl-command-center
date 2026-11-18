@@ -42,6 +42,16 @@ async function render(estate, verticals, options = {}) {
     setInterval: (callback, ms) => { if (ms === 30000) poll = callback; return 0; },
     fetch: async url => {
       requests.push(url);
+      // On-demand counterfactual is not part of the three-GET poll.
+      if (url.includes('/api/release-impact?')) {
+        const permitted = Boolean(options.impact) && !options.impactFailure;
+        const response = {
+          ok: permitted,
+          status: permitted ? 200 : (options.impactFailure || 503),
+          json: async () => permitted ? options.impact : { reason_code: 'SOURCE_SNAPSHOT_CHANGED' },
+        };
+        return response;
+      }
       const name = url.endsWith('/estate') ? 'estate' :
         url.endsWith('/ontology') ? 'ontology' : 'verticals';
       // Explicit feature-disabled response is not the same as a failed endpoint.
@@ -512,4 +522,84 @@ test('WebCrypto unavailable fails closed instead of trusting formatted SHA-256 v
   assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
   assert.match(ids.get('ontology-graph').textContent, /GRAPH_CHECKSUM_UNVERIFIED/);
   assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
+});
+
+function descendants(root) {
+  const result = [];
+  function visit(node) {
+    if (!node || typeof node !== 'object') return;
+    result.push(node);
+    (node.children || []).forEach(visit);
+  }
+  visit(root);
+  return result;
+}
+
+test('on-demand release-impact rehearsal binds the Python fixture and changes no authority', async () => {
+  const root = path.join(__dirname, 'fixtures');
+  const graph = JSON.parse(fs.readFileSync(path.join(root, 'release-fabric-python-golden.v1.json')));
+  const impactRaw = fs.readFileSync(path.join(root, 'release-impact-python-golden.v1.json'));
+  assert.equal(createHash('sha256').update(Buffer.from(impactRaw.toString().replace(/\r\n/g, '\n'))).digest('hex'),
+    '37bc31dfd642f679ff253b568be48d8df12111837791cd96208d8f2e89907427');
+  const impact = JSON.parse(impactRaw);
+  assert.equal(impact.content_sha256,
+    '6db2731329a0d1156383eac5b4a70056962c065c2da23d29a8adafb34cebfe61');
+  const [estate, verticals] = fixture(false);
+  estate.generated_at = graph.source_generated_at;
+  const browser = await render(estate, verticals, { ontology: graph, impact });
+  assert.equal(browser.requests.length, 3, 'no impact request on initial poll');
+  const nodes = descendants(browser.ids.get('ontology-graph'));
+  const button = nodes.find(x => x.textContent === 'Rehearse loss' && typeof x.onclick === 'function');
+  const status = nodes.find(x => x.className === 'mono release-impact-result');
+  assert.ok(button && status);
+  assert.match(status.textContent, /NOT RUN/);
+  await button.onclick();
+  assert.equal(browser.requests.length, 4, 'exactly one user-directed impact GET');
+  assert.match(browser.requests[3], /\/api\/release-impact\?source=github&basis=/);
+  assert.match(browser.requests[3], new RegExp(graph.source_snapshot_sha256));
+  assert.match(status.textContent, /7 structurally exposed/);
+  assert.match(status.textContent, /1 metadata stages change/);
+  assert.match(status.textContent, /All links remain unproved/);
+  assert.match(status.textContent, /No actions, deployment or revenue authorized/);
+  assert.equal(browser.ids.get('ontology-chip').textContent, 'VERIFIED');
+});
+
+test('a tampered impact result cannot become a new permission or green claim', async () => {
+  const graph = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json')));
+  const valid = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-impact-python-golden.v1.json')));
+  for (const scenario of [
+    { ...valid, can_deploy: true },
+    { ...valid, production_qualified: true },
+    { ...valid, action_authorized: true },
+    { ...valid, interpretation: 'Modified without corresponding checksum' },
+    { ...valid, basis_source_snapshot_sha256: 'f'.repeat(64) },
+  ]) {
+    const [estate, verticals] = fixture(false);
+    estate.generated_at = graph.source_generated_at;
+    const browser = await render(estate, verticals, { ontology: graph, impact: scenario });
+    const nodes = descendants(browser.ids.get('ontology-graph'));
+    const button = nodes.find(x => x.textContent === 'Rehearse loss' && typeof x.onclick === 'function');
+    const status = nodes.find(x => x.className === 'mono release-impact-result');
+    assert.ok(button);
+    await button.onclick();
+    assert.match(status.textContent, /UNAVAILABLE · IMPACT_(CONTRACT|CHECKSUM)_INVALID/);
+    assert.doesNotMatch(status.textContent, /7 structurally exposed/);
+    assert.equal(browser.ids.get('ontology-chip').textContent, 'VERIFIED');
+  }
+});
+
+test('stale impact source refuses to reuse previous simulated success', async () => {
+  const graph = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json')));
+  const [estate, verticals] = fixture(false);
+  estate.generated_at = graph.source_generated_at;
+  const browser = await render(estate, verticals, { ontology: graph, impactFailure: 409 });
+  const nodes = descendants(browser.ids.get('ontology-graph'));
+  const button = nodes.find(x => x.textContent === 'Rehearse loss' && typeof x.onclick === 'function');
+  const status = nodes.find(x => x.className === 'mono release-impact-result');
+  await button.onclick();
+  assert.match(status.textContent, /SOURCE_SNAPSHOT_CHANGED/);
+  assert.doesNotMatch(status.textContent, /exposed:/);
 });

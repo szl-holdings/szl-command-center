@@ -30,6 +30,7 @@ from .collectors import cloudflare, dns, github, huggingface, receipts
 from .collectors.base import roll_up, utc_now
 
 from .ontology import project as project_ontology
+from . import release_impact
 from .source_manifest import verify as verify_source_manifest
 from .inference import router as inference_router
 
@@ -160,6 +161,36 @@ def api_ontology() -> JSONResponse:
         project_ontology(source),
         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
     )
+
+
+@app.get("/api/release-impact")
+def api_release_impact(source: str, basis: str) -> JSONResponse:
+    """Bounded on-demand source-loss rehearsal, sharing /api/ontology's gate."""
+    headers = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex"}
+    if os.environ.get("SZL_ONTOLOGY_READONLY_ENABLED") != "1":
+        return JSONResponse({"status": "UNAVAILABLE", "reason_code": "FEATURE_NOT_ADMITTED"},
+                            status_code=503, headers=headers)
+    # Validate before accessing the existing collector cache: malformed callers
+    # must not induce fresh privileged reads or probe arbitrary resources.
+    if type(source) is not str or source not in release_impact.SELECTABLE:
+        return JSONResponse({"status": "UNAVAILABLE", "reason_code": "SOURCE_NOT_ALLOWED"},
+                            status_code=400, headers=headers)
+    if type(basis) is not str or not release_impact.SHA256.fullmatch(basis):
+        return JSONResponse({"status": "UNAVAILABLE", "reason_code": "BASIS_INVALID"},
+                            status_code=400, headers=headers)
+    snapshot = (_public_preview_estate() if public_preview.active()
+                else _cached("estate", _estate))
+    ontology = project_ontology(snapshot)
+    try:
+        report = release_impact.simulate(ontology, source, basis)
+    except ValueError as exc:
+        # Never disclose collector values, source refs or exception internals.
+        if str(exc) == "SOURCE_SNAPSHOT_CHANGED":
+            return JSONResponse({"status": "UNAVAILABLE", "reason_code": "SOURCE_SNAPSHOT_CHANGED"},
+                                status_code=409, headers=headers)
+        return JSONResponse({"status": "UNAVAILABLE", "reason_code": "GRAPH_PROJECTION_UNAVAILABLE"},
+                            status_code=503, headers=headers)
+    return JSONResponse(report, headers=headers)
 
 
 @app.get("/api/source-manifest")

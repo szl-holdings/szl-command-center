@@ -148,3 +148,13 @@ schema may update edge qualification. **Never modify this v1 module simply
 to make a dashboard green.**
 
 There is no background writer, monitor, or paid operation in this change.
+
+## Counterfactual dependency-loss view (additive, source-only)
+
+The existing fabric's eight stages and nine unproven release edges remain
+unchanged. [The on-demand, read-only release-impact research lane](RELEASE_IMPACT_RESEARCH_20261117.md)
+uses that fixed dependency graph to rehearse a missing source without new
+provider calls or claims of causal outage, model qualification, signed
+attestation, permission or revenue. It retains the same disabled-by-default
+ontology feature flag and exact source snapshot binding. It is not a new
+scheduler, controller or production admission gate.
