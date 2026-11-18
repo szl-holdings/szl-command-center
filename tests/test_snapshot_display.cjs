@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { createHash, webcrypto } = require('node:crypto');
+const { TextEncoder } = require('node:util');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
@@ -35,7 +37,8 @@ async function render(estate, verticals, options = {}) {
   let source = fs.readFileSync(path.join(__dirname, '../frontend/app.js'), 'utf8');
   if (options.proxy) source = source.replaceAll('__PORT_8000__', options.proxy);
   vm.runInNewContext(source, {
-    document, window: { location: { host: options.host || 'localhost:8000' } },
+    document, crypto: options.noCrypto ? undefined : webcrypto, TextEncoder,
+    window: { location: { host: options.host || 'localhost:8000' } },
     setInterval: (callback, ms) => { if (ms === 30000) poll = callback; return 0; },
     fetch: async url => {
       requests.push(url);
@@ -57,7 +60,14 @@ async function render(estate, verticals, options = {}) {
       return response;
     },
   });
-  await new Promise(resolve => setImmediate(resolve));
+  // WebCrypto runs asynchronously; wait for initial paint instead of
+  // making a race-dependent assertion after one event-loop tick.
+  const painted = () => ['VERIFIED', 'UNKNOWN', 'UNAVAILABLE'].includes(
+    ids.get('poll-state').textContent);
+  for (let i = 0; i < 100 && !painted(); i++) {
+    await new Promise(resolve => setTimeout(resolve, 3));
+  }
+  assert.ok(painted(), 'initial paint timed out');
   return { ids, requests, startPoll() { return poll(); }, async pollFailures(names) {
     failed = new Set(names);
     await poll();
@@ -244,6 +254,39 @@ function releaseFabricFixture(graph) {
   };
 }
 
+function canonicalForFixture(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'string') {
+    return JSON.stringify(value).replace(/[\u007f-\uffff]/g, c =>
+      '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalForFixture).join(',') + ']';
+  if (typeof value === 'object') return '{' + Object.keys(value).sort().map(
+    key => canonicalForFixture(key) + ':' + canonicalForFixture(value[key])).join(',') + '}';
+  throw new Error('Unsupported fixture input');
+}
+
+function digestFixture(value) {
+  return createHash('sha256').update(canonicalForFixture(value), 'utf8').digest('hex');
+}
+
+function recomputeGraphChecksums(graph) {
+  const sourceBody = {
+    source_generated_at: graph.source_generated_at,
+    observations: graph.nodes.slice(1).map(node => [
+      node.id, node.truth_state, node.observed_at, node.evidence_ref_sha256,
+    ]),
+  };
+  graph.source_snapshot_sha256 = digestFixture(sourceBody);
+  graph.release_fabric.basis_source_snapshot_sha256 = graph.source_snapshot_sha256;
+  const { content_sha256: ignoredFabric, ...fabricBody } = graph.release_fabric;
+  graph.release_fabric.content_sha256 = digestFixture(fabricBody);
+  const { content_sha256: ignoredOuter, ...outerBody } = graph;
+  graph.content_sha256 = digestFixture(outerBody);
+  return graph;
+}
+
 function graphFixture(estate, sourceStamp = estate.generated_at) {
   const sources = ['github', 'huggingface', 'cloudflare', 'dns', 'receipts'];
   const graph = {
@@ -260,11 +303,12 @@ function graphFixture(estate, sourceStamp = estate.generated_at) {
     nodes: [{ kind: 'snapshot', id: 'snapshot:estate', action_authorized: false }, ...sources.map(
       name => ({ id: 'source:' + name, kind: 'evidence_source',
         label: name, truth_state: 'UNKNOWN', reason_code: 'SYNTHETIC',
+        observed_at: null, evidence_ref_sha256: null,
         action_authorized: false }))
     ],
   };
   graph.release_fabric = releaseFabricFixture(graph);
-  return graph;
+  return recomputeGraphChecksums(graph);
 }
 
 test('disabled evidence graph leaves historical successes unpromoted', async () => {
@@ -298,6 +342,7 @@ test('admitted verified matching graph preserves independently verified base das
   graph.verified_sources = 5;
   graph.nodes.slice(1).forEach(function (node) { node.truth_state = 'VERIFIED'; });
   graph.release_fabric = releaseFabricFixture(graph);
+  recomputeGraphChecksums(graph);
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.equal(ids.get('poll-state').textContent, 'VERIFIED');
   assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
@@ -402,7 +447,7 @@ test('release fabric rejects attempted release, payment or execution promotion',
     corrupt(graph.release_fabric);
     const { ids } = await render(estate, verticals, { ontology: graph });
     assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
-    assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE|INVALID_GRAPH_CONTRACT/);
+    assert.match(ids.get('ontology-graph').textContent, /FEATURE_NOT_ADMITTED_OR_UNAVAILABLE|INVALID_GRAPH_CONTRACT|GRAPH_CHECKSUM_UNVERIFIED/);
     assert.doesNotMatch(ids.get('ontology-graph').textContent, /GATE NOT ESTABLISHED/);
   }
 });
@@ -413,4 +458,56 @@ test('release fabric never enables public-preview private collectors', async () 
   const { ids } = await render(estate, verticals, { ontology: graph });
   assert.match(ids.get('ontology-graph').textContent, /NO_ADMITTED_COLLECTOR|GATE NOT ESTABLISHED/);
   assert.doesNotMatch(ids.get('ontology-graph').textContent, /private.customer|payment.signature/i);
+});
+
+
+test('real Python-generated ontology SHA-256 fixture passes the browser checksum gate', async () => {
+  const raw = fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json'));
+  assert.equal(createHash('sha256').update(raw).digest('hex'),
+    '9867c97ca5d3247cbd3380044cdbab0e5cb2cc64c394be1b23d8ef0c20c66eaf');
+  const graph = JSON.parse(raw);
+  assert.equal(graph.source_snapshot_sha256,
+    '9e36590d321c0afbf0b1c3847bbb7787819e84f491a1ef0cd94d0383847f9bbf');
+  assert.equal(graph.release_fabric.content_sha256,
+    'a7c0101687f99dd62921833d3ea44706b58e153201dab1a760fc4f7bbda71a92');
+  const [estate, verticals] = fixture(false);
+  estate.generated_at = graph.source_generated_at;
+  const { ids } = await render(estate, verticals, { ontology: graph });
+  assert.equal(ids.get('ontology-chip').textContent, 'VERIFIED');
+  assert.match(ids.get('ontology-graph').textContent, /ONE RELEASE CHAIN/);
+  assert.match(ids.get('ontology-graph').textContent, /0\/8 independently qualified/);
+});
+
+test('each of the three independent hash bindings rejects structurally plausible tampering', async () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json'));
+  const attacks = [
+    ['source', graph => { graph.nodes[1].evidence_ref_sha256 = 'f'.repeat(64); }],
+    ['fabric', graph => { graph.release_fabric.limitations += ' tampered'; }],
+    ['outer', graph => { graph.provenance.runtime_production_ready = 'QUALIFIED'; }],
+  ];
+  for (const [axis, attack] of attacks) {
+    const graph = JSON.parse(source);
+    attack(graph);
+    const [estate, verticals] = fixture(false);
+    estate.generated_at = graph.source_generated_at;
+    const { ids } = await render(estate, verticals, { ontology: graph });
+    assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE', axis);
+    assert.match(ids.get('ontology-graph').textContent,
+      /GRAPH_CHECKSUM_UNVERIFIED/, axis);
+    assert.doesNotMatch(ids.get('ontology-graph').textContent,
+      /ONE RELEASE CHAIN/, axis);
+  }
+});
+
+test('WebCrypto unavailable fails closed instead of trusting formatted SHA-256 values', async () => {
+  const graph = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json')));
+  const [estate, verticals] = fixture(false);
+  estate.generated_at = graph.source_generated_at;
+  const { ids } = await render(estate, verticals, { ontology: graph, noCrypto: true });
+  assert.equal(ids.get('ontology-chip').textContent, 'UNAVAILABLE');
+  assert.match(ids.get('ontology-graph').textContent, /GRAPH_CHECKSUM_UNVERIFIED/);
+  assert.equal(ids.get('poll-state').textContent, 'UNKNOWN');
 });
