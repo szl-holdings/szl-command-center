@@ -7,7 +7,6 @@ identity, signature, trusted hardware, payment, or execution authorization.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
@@ -15,7 +14,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from backend.source_manifest import SCHEMA, SOURCE_REPO, file_hash, source_files, verify
+from backend.source_manifest import (
+    LOCAL_ONLY_SOURCE_FILES, SCHEMA, SOURCE_REPO, file_hash, source_files, verify,
+)
 
 README = """---
 title: SZL Command Center
@@ -75,9 +76,12 @@ def git_admission(root: Path, revision: str) -> set[str]:
     live = _git(root, "ls-remote", "origin", "refs/heads/main")
     if not live or live.split()[0] != revision:
         raise BundleError("PROTECTED_MAIN_MOVED_OR_UNAVAILABLE")
-    names = set(_git(root, "ls-files", "--", "Dockerfile",
-                     "requirements-space.txt", "backend", "frontend").splitlines())
-    if names != source_files(root):
+    tracked = set(_git(root, "ls-files", "--", "Dockerfile",
+                       "requirements-space.txt", "backend", "frontend").splitlines())
+    # Source-only Lake operator tooling remains in GitHub for offline testing,
+    # but must be intentionally absent from the derived public Docker image.
+    names = tracked - LOCAL_ONLY_SOURCE_FILES
+    if names != source_files(root, allow_local_only_source=True):
         raise BundleError("UNTRACKED_OR_MISSING_RUNTIME_FILE")
     return names
 
@@ -91,7 +95,7 @@ def build_bundle(root: Path, output: Path, revision: str,
         raise BundleError("INVALID_SOURCE_REVISION")
     if output.exists() and any(output.iterdir()):
         raise BundleError("OUTPUT_NOT_EMPTY")
-    expected = source_files(root)
+    expected = source_files(root, allow_local_only_source=True)
     if selected is not None and set(selected) != expected:
         raise BundleError("SOURCE_CLOSURE_DRIFT")
     output.mkdir(parents=True, exist_ok=True)

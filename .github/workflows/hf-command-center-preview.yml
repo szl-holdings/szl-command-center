@@ -29,7 +29,7 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           python - <<'PY'
-          import os
+          import json, os
           from pathlib import Path
           from scripts.build_command_center_space import build_bundle
           from backend.source_manifest import verify
@@ -37,6 +37,13 @@ jobs:
           report = build_bundle(Path.cwd(), out, os.environ["SOURCE_COMMIT"])
           assert report["status"] == "SELF_CONSISTENT", report
           assert verify(out)["status"] == "SELF_CONSISTENT"
+          # GitHub source includes operator-only Lake tooling. Public Docker
+          # artifacts must exclude it regardless of its local test coverage.
+          assert not (out / "backend" / "lake_operator_bridge.py").exists()
+          assert all(
+              row["path"] != "backend/lake_operator_bridge.py"
+              for row in json.loads((out / "source_manifest.json").read_text())["files"]
+          )
           print("source_bundle_ok", report["listed_files"], report["manifest_sha256"])
           PY
       - name: Build pinned nonroot Docker image
@@ -46,6 +53,7 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           docker run --detach --name szl-cc-admission -p 127.0.0.1:17860:7860 -e GH_TOKEN=CI_FAKE_GH_TOKEN -e HF_TOKEN=CI_FAKE_HF_TOKEN -e CLOUDFLARE_API_TOKEN=CI_FAKE_CF_TOKEN -e SZL_ONTOLOGY_READONLY_ENABLED=1 szl-command-center:admission
+          docker exec szl-cc-admission python -c "from pathlib import Path; assert not Path('/app/backend/lake_operator_bridge.py').exists(); print('operator_only_code_not_shipped')"
           python - <<'PY'
           import json, os, time, urllib.request
           url = "http://127.0.0.1:17860/api/source-manifest"

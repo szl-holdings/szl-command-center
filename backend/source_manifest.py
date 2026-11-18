@@ -16,6 +16,10 @@ SOURCE_REPO = "szl-holdings/szl-command-center"
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 ALLOWED_SUFFIXES = frozenset({".py", ".json", ".html", ".css", ".js", ".svg"})
 FIXED_FILES = frozenset({"Dockerfile", "requirements-space.txt"})
+# Explicit source-only modules must NEVER enter the public Docker bundle.
+# Do not silently ignore these paths in a deployed bundle: verify() refuses
+# their presence even if the manifest omits them.
+LOCAL_ONLY_SOURCE_FILES = frozenset({"backend/lake_operator_bridge.py"})
 MAX_MANIFEST_BYTES = 256_000
 MAX_FILE_BYTES = 2_000_000
 MAX_FILES = 1000
@@ -25,8 +29,12 @@ class ManifestError(ValueError):
     """A bounded source manifest did not meet its declared contract."""
 
 
-def source_files(root: Path) -> set[str]:
-    """Enumerate actual non-symlink executable/data payload files."""
+def source_files(root: Path, *, allow_local_only_source: bool = False) -> set[str]:
+    """Enumerate the public runtime payload and deny local operator code.
+
+    The audited source checkout may contain explicitly classified local-only
+    modules. Runtime verification never allows them, even as extra files.
+    """
     result = set(FIXED_FILES)
     for folder in ("backend", "frontend"):
         base = root / folder
@@ -41,7 +49,12 @@ def source_files(root: Path) -> set[str]:
                 continue
             if file.suffix not in ALLOWED_SUFFIXES or file.is_symlink():
                 raise ManifestError("UNEXPECTED_OR_SYMLINK_FILE")
-            result.add(file.relative_to(root).as_posix())
+            rel = file.relative_to(root).as_posix()
+            if rel in LOCAL_ONLY_SOURCE_FILES:
+                if not allow_local_only_source:
+                    raise ManifestError("OPERATOR_ONLY_PAYLOAD_FORBIDDEN")
+                continue
+            result.add(rel)
     if len(result) > MAX_FILES:
         raise ManifestError("FILE_COUNT_BOUND_EXCEEDED")
     return result

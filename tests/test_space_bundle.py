@@ -8,8 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend import main
-from backend.source_manifest import verify
-from scripts.build_command_center_space import BundleError, build_bundle
+from backend.source_manifest import (
+    LOCAL_ONLY_SOURCE_FILES, ManifestError, source_files, verify,
+)
+from scripts.build_command_center_space import BundleError, build_bundle, git_admission
 
 SHA = "a" * 40
 
@@ -19,6 +21,7 @@ def fixture(root: Path) -> None:
     (root / "frontend").mkdir()
     (root / "backend" / "__init__.py").write_text("# Package\n")
     (root / "backend" / "handler.py").write_text("VALUE = True\n")
+    (root / "backend" / "lake_operator_bridge.py").write_text("LOCAL_ONLY = True\n")
     (root / "frontend" / "index.html").write_text("<h1>Observe</h1>\n")
     (root / "Dockerfile").write_text("FROM scratch\n")
     (root / "requirements-space.txt").write_text("fastapi==0.143.2\n")
@@ -49,6 +52,14 @@ class SourceManifestTests(unittest.TestCase):
         self.assertIn("sdk: docker", (self.out / "README.md").read_text())
         self.assertIn(SHA, (self.out / "README.md").read_text())
         self.assertTrue((self.out / "LICENSE").exists())
+        self.assertFalse((self.out / "backend" / "lake_operator_bridge.py").exists())
+        with self.assertRaisesRegex(ManifestError, "OPERATOR_ONLY_PAYLOAD_FORBIDDEN"):
+            source_files(self.root)
+        self.assertEqual(
+            source_files(self.root, allow_local_only_source=True),
+            {"Dockerfile", "requirements-space.txt",
+             "backend/__init__.py", "backend/handler.py", "frontend/index.html"},
+        )
 
     def test_modified_payload_fails_closed(self):
         self.build()
@@ -67,6 +78,60 @@ class SourceManifestTests(unittest.TestCase):
         self.build()
         (self.out / "backend" / "evil.py").write_text("ACTION = True\n")
         self.assertEqual(verify(self.out)["reason_code"], "FILE_SET_DRIFT")
+
+    def test_local_operator_bridge_in_deployed_bundle_is_explicitly_denied(self):
+        self.build()
+        forbidden = self.out / "backend" / "lake_operator_bridge.py"
+        self.assertFalse(forbidden.exists())
+        forbidden.write_text("LOCAL_ONLY = False\n")
+        report = verify(self.out)
+        self.assertEqual(report["status"], "UNAVAILABLE")
+        self.assertEqual(report["reason_code"], "OPERATOR_ONLY_PAYLOAD_FORBIDDEN")
+        self.assertFalse(report["execution_authorized"])
+
+    def test_checkout_only_code_is_excluded_by_git_admission(self):
+        tracked = (
+            "Dockerfile", "requirements-space.txt",
+            "backend/__init__.py", "backend/handler.py",
+            "backend/lake_operator_bridge.py", "frontend/index.html",
+        )
+        def fake_git(root, *args):
+            if args == ("status", "--porcelain"):
+                return ""
+            if args == ("branch", "--show-current"):
+                return "main"
+            if args == ("rev-parse", "HEAD"):
+                return SHA
+            if args == ("remote", "get-url", "origin"):
+                return "https://github.com/szl-holdings/szl-command-center.git"
+            if args == ("ls-remote", "origin", "refs/heads/main"):
+                return SHA + " refs/heads/main"
+            if args[0] == "ls-files":
+                return "\n".join(tracked)
+            raise AssertionError("unexpected git admission command")
+        with patch("scripts.build_command_center_space._git", side_effect=fake_git):
+            selected = git_admission(self.root, SHA)
+        self.assertEqual(selected, set(tracked) - LOCAL_ONLY_SOURCE_FILES)
+        self.assertNotIn("backend/lake_operator_bridge.py", selected)
+        report = build_bundle(self.root, self.out, SHA, selected=selected)
+        self.assertEqual(report["status"], "SELF_CONSISTENT")
+
+    def test_canonical_repository_operator_code_remains_local_only(self):
+        root = Path(__file__).resolve().parents[1]
+        path = root / "backend" / "lake_operator_bridge.py"
+        self.assertTrue(path.is_file())
+        expected = source_files(root, allow_local_only_source=True)
+        self.assertNotIn("backend/lake_operator_bridge.py", expected)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "space"
+            report = build_bundle(root, out, SHA, selected=expected)
+            self.assertEqual(report["status"], "SELF_CONSISTENT")
+            self.assertFalse((out / "backend" / "lake_operator_bridge.py").exists())
+            manifest = json.loads((out / "source_manifest.json").read_text())
+            self.assertFalse(any(
+                row["path"] == "backend/lake_operator_bridge.py"
+                for row in manifest["files"]
+            ))
 
     def test_invalid_manifest_duplicate_key_fails_closed(self):
         self.build()

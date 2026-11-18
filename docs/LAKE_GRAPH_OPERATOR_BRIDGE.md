@@ -44,6 +44,30 @@ Default public-preview mode, including any image with the pinned
 There is **no** new `/api/lake-graph` route in Command Center;
 ordinary `/api/estate` and `/api/ontology` remain unchanged.
 
+## Public artifact exclusion (source-to-runtime boundary)
+
+The operator bridge is intentionally source-only **and must not be
+packaged in the public Hugging Face Docker image**. A code-level lack of
+API routes is not enough if the publisher copies the whole `backend/`
+directory. The source-controlled deployment manifest now explicitly
+classifies `backend/lake_operator_bridge.py` as
+`LOCAL_ONLY_SOURCE_FILES`:
+
+- `git_admission` retains the bridge in the canonical GitHub checkout
+  but subtracts it from the verified public runtime closure.
+- `build_bundle` ships only the selected runtime closure and never
+  copies the bridge into the derived Hub repo or `source_manifest.json`.
+- `verify` fails closed with `OPERATOR_ONLY_PAYLOAD_FORBIDDEN` if
+  the bridge appears inside any deployed directory, including if a
+  malicious build inserts it without listing it in the manifest.
+- The isolated Docker CI independently checks **the actual running
+  image** for absence of `/app/backend/lake_operator_bridge.py`.
+
+This is a source-bundle packaging classification, **not a new public
+Lake endpoint** or permission to query local Lake remotely. Publishing
+the new source is separately governed by the existing signed-main,
+parent-commit, Hub-byte and runtime-source readback gate.
+
 ## Validation contract
 
 The bridge checks the exact `szl.lake.evidence-graph/v1` schema,
