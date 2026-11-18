@@ -77,6 +77,23 @@ libraries, or network mutations. Validation rejects any fabricated
 `production_qualified`, `can_deploy`, financial-success or edge-success
 claims before rendering.
 
+**New: browser-side SHA-256 recomputation.** Previously, the UI checked
+that the three 64-character checksums looked like SHA-256 but did not
+recompute them. On every admitted ontology response, native secure-context
+WebCrypto now recomputes and compares all three **Python-canonical JSON**
+digests: (1) the redacted collector observation snapshot, (2) the
+eight-stage release-fabric body, and (3) the complete outer ontology body.
+The browser refuses to render a graph if any digest changes, the payload is
+oversized/malformed, or SubtleCrypto is unavailable. It does not requery
+providers or introduce an external hash library. A Python-generated golden
+fixture pins the cross-language serialization contract.
+
+These are **consistency checks of bytes supplied by the same origin**;
+an attacker with the ability to replace those bytes and all matching digests
+could still fabricate a coherent graph. Provider signatures, trusted GitHub
+revision and verified attestation are *independent* missing gates. SHA-256
+does not grant action authority or certify payment settlement.
+
 `GET /api/ontology` remains **503 FEATURE_NOT_ADMITTED** until the
 existing explicit `SZL_ONTOLOGY_READONLY_ENABLED=1` admission is applied
 through its authorized deployment path. **This source change does not set
@@ -103,7 +120,11 @@ truth-state combinations; no combination qualifies a stage, authorizes a
 deployment or asserts financial revenue. Route tests confirm a disabled
 feature performs no collector work, and public preview cannot access private
 collectors. Browser-DOM contract tests reject tampering, prove a historical
-green status is not inherited, and exercise the user-visible graph.
+green status is not inherited, and exercise the user-visible graph. The updated frontend contract additionally
+checks an exact Python-generated golden response, rejects tampering separately
+at source, fabric and outer-body checksums, and requires that missing browser
+WebCrypto fails closed. The application still does not claim a cryptographic
+signature or verified external origin.
 
 ## Required next gates
 

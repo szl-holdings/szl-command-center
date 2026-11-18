@@ -854,7 +854,7 @@
     wrap.appendChild(edges);
     var note = document.createElement('p');
     note.className = 'mono release-fabric-foot';
-    note.textContent = 'GRAPH HASH (UNSIGNED) ' + fabric.content_sha256.slice(0, 24) +
+    note.textContent = 'RECOMPUTED UNSIGNED GRAPH SHA-256 ' + fabric.content_sha256.slice(0, 24) +
       '… · collector success does not imply verified weights, settled payments, or a published wheel';
     wrap.appendChild(note);
     host.appendChild(wrap);
@@ -908,6 +908,81 @@
     return links.size === 5 && validReleaseFabric(payload.release_fabric, payload.source_snapshot_sha256, payload.nodes);
   }
 
+  /* Recompute all three JSON integrity digests before trusting the display.
+     Server hashes use Python json.dumps(sort_keys=True,separators=(',', ':'),
+     ensure_ascii=True). All admitted graph numbers are bounded integers.
+     A matching checksum is data consistency, NEVER source authenticity. */
+  function asciiJsonString(value) {
+    return JSON.stringify(value).replace(/[\u007f-\uffff]/g, function (character) {
+      return '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0');
+    });
+  }
+
+  function canonicalGraphJson(value, depth) {
+    if (depth > 24) throw new Error('GRAPH_DEPTH_LIMIT');
+    if (value === null) return 'null';
+    if (typeof value === 'string') return asciiJsonString(value);
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
+    if (Array.isArray(value) && value.length <= 100) {
+      return '[' + value.map(function (item) {
+        return canonicalGraphJson(item, depth + 1);
+      }).join(',') + ']';
+    }
+    if (isRecord(value)) {
+      var keys = Object.keys(value);
+      if (keys.length > 100) throw new Error('GRAPH_KEY_LIMIT');
+      return '{' + keys.sort().map(function (key) {
+        return asciiJsonString(key) + ':' + canonicalGraphJson(value[key], depth + 1);
+      }).join(',') + '}';
+    }
+    throw new Error('GRAPH_UNSUPPORTED_TYPE');
+  }
+
+  async function graphSha256(value) {
+    if (typeof crypto === 'undefined' || !crypto.subtle ||
+        typeof crypto.subtle.digest !== 'function' ||
+        typeof TextEncoder === 'undefined') throw new Error('WEBCRYPTO_UNAVAILABLE');
+    var content = canonicalGraphJson(value, 0);
+    if (content.length > 65536) throw new Error('GRAPH_BYTE_LIMIT');
+    var bytes = new TextEncoder().encode(content);
+    var digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map(function (byte) {
+      return byte.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  async function verifiedGraphChecksums(payload) {
+    try {
+      if (!validOntology(payload)) return false;
+      var sourceBody = {
+        source_generated_at: payload.source_generated_at,
+        observations: payload.nodes.slice(1).map(function (node) {
+          return [node.id, node.truth_state, node.observed_at,
+            node.evidence_ref_sha256];
+        })
+      };
+      if (await graphSha256(sourceBody) !== payload.source_snapshot_sha256) {
+        return false;
+      }
+      var fabricBody = Object.assign({}, payload.release_fabric);
+      delete fabricBody.content_sha256;
+      if (await graphSha256(fabricBody) !== payload.release_fabric.content_sha256) {
+        return false;
+      }
+      var outerBody = Object.assign({}, payload);
+      delete outerBody.content_sha256;
+      if (await graphSha256(outerBody) !== payload.content_sha256) {
+        return false;
+      }
+      return true;
+    } catch (error) {
+      // No alternative unchecked path on unsupported WebCrypto, malformed
+      // graph data, oversized payload or hash mismatch.
+      return false;
+    }
+  }
+
   function renderOntology(payload) {
     var host = el('ontology-graph');
     clear(host);
@@ -940,8 +1015,9 @@
     host.appendChild(list);
     renderReleaseFabric(payload.release_fabric, host);
     el('ontology-foot').textContent =
-      'READ ONLY · source-bound SHA256 ' + payload.source_snapshot_sha256.slice(0, 16) +
-      ' · independent witness: NOT ESTABLISHED · actions: DENIED';
+      'READ ONLY · three independent SHA-256 consistency checks passed · source ' +
+      payload.source_snapshot_sha256.slice(0, 16) +
+      ' · source authenticity: NOT ESTABLISHED · actions: DENIED';
   }
 
   var refreshEpoch = 0;
@@ -970,6 +1046,7 @@
     });
 
     var graphDisabled = false;
+    var graphIntegrityFailure = false;
     var graphP = fetch(apiBase() + '/api/ontology', {
       headers: { Accept: 'application/json' }, cache: 'no-store',
     }).then(function (r) {
@@ -984,10 +1061,11 @@
       }
       if (!r.ok) throw new Error('Ontology HTTP ' + r.status);
       return r.json();
-    }).then(function (d) {
+    }).then(async function (d) {
       if (graphDisabled) return;
-      if (!validOntology(d)) {
-        throw new Error('Invalid ontology contract');
+      if (!validOntology(d) || !await verifiedGraphChecksums(d)) {
+        graphIntegrityFailure = true;
+        throw new Error('GRAPH_CHECKSUM_UNVERIFIED');
       }
       graph = d;
       results.ontology = true;
@@ -1004,7 +1082,8 @@
       if (bound) {
         renderOntology(graph);
       } else {
-        renderOntologyUnavailable(graph ? 'SOURCE_SNAPSHOT_MISMATCH' : 'FEATURE_NOT_ADMITTED_OR_UNAVAILABLE');
+        renderOntologyUnavailable(graph ? 'SOURCE_SNAPSHOT_MISMATCH' :
+          graphIntegrityFailure ? 'GRAPH_CHECKSUM_UNVERIFIED' : 'FEATURE_NOT_ADMITTED_OR_UNAVAILABLE');
       }
       renderSnapshotNotice();
       if (lastEstate) {

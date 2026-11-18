@@ -80,6 +80,9 @@ class OntologyHttpTests(unittest.TestCase):
         self.assertIn("function renderReleaseFabric", js.text)
         self.assertIn("0/8 independently qualified", js.text)
         self.assertIn("0/9 links proven", js.text)
+        self.assertIn("crypto.subtle.digest", js.text)
+        self.assertIn("GRAPH_CHECKSUM_UNVERIFIED", js.text)
+        self.assertIn("verifiedGraphChecksums", js.text)
         # All untrusted source fields are emitted only through textContent.
         self.assertNotIn("innerHTML =", js.text[js.text.index("function validReleaseFabric"):js.text.index("function refresh()")])
 

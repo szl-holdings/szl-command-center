@@ -191,8 +191,11 @@ The frontend presents these source-bound requirements as a keyboard-friendly
 evidence graph, never an autonomous action console. It reuses the existing
 `SZL_ONTOLOGY_READONLY_ENABLED=1` admission flag and remains disabled by
 default; in public-preview mode, no privileged collector is queried even if
-the flag is set. Checksums are not signatures. See the
-[complete release-fabric contract](docs/RELEASE_FABRIC.md) and
+the flag is set. Checksums are not signatures. The browser now recomputes and verifies
+the source-observation, release-fabric and outer-ontology SHA-256 digests
+before rendering; missing WebCrypto or any mismatch fails closed. These
+digests establish same-origin consistency, not independent authenticity.
+See the [complete release-fabric contract](docs/RELEASE_FABRIC.md) and
 `tests/test_release_fabric.py`.
 
 ## Derived Hugging Face Docker preview
