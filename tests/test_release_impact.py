@@ -7,7 +7,7 @@ import itertools
 import json
 import os
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from backend import main, ontology, release_fabric, release_impact
