@@ -13,6 +13,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend import main, public_preview
+from backend.cache import ResponseCache
 from backend.verticals import VERTICALS
 
 
@@ -90,6 +91,48 @@ class PreviewBoundaryTest(unittest.TestCase):
         self.assertEqual(proof["verified_sources"], 0)
         self.assertEqual(proof["rollup"], "UNAVAILABLE")
         self.assertFalse(proof["authorization"]["can_execute_actions"])
+
+    def test_public_estate_and_ontology_are_exactly_bound_without_private_cache(self):
+        self.marker.write_text("{}")
+        ticks = [0.0]
+        cache = ResponseCache(60, clock=lambda: ticks[0])
+        first = "2026-11-18T00:19:59Z"
+        second = "2026-11-18T00:21:00Z"
+        with patch.dict(os.environ, {"SZL_ONTOLOGY_READONLY_ENABLED": "1"},
+                        clear=True), \
+             patch.object(main, "_public_preview_cache", cache), \
+             patch.object(public_preview, "utc_now", side_effect=[first, second]), \
+             patch.object(public_preview, "estate", wraps=public_preview.estate) as public_builder, \
+             patch.object(main, "_cached", side_effect=AssertionError("privileged cache reached")), \
+             patch.object(main, "_snapshot", side_effect=AssertionError("historical store reached")), \
+             patch.object(main.github, "collect", side_effect=AssertionError("GitHub collector reached")), \
+             patch.object(main.huggingface, "collect", side_effect=AssertionError("HF collector reached")), \
+             patch.object(main.cloudflare, "collect", side_effect=AssertionError("CF collector reached")):
+            client = TestClient(main.app)
+            estate = client.get("/api/estate")
+            graph = client.get("/api/ontology")
+            self.assertEqual((estate.status_code, graph.status_code), (200, 200))
+            self.assertEqual(public_builder.call_count, 1)
+            self.assertEqual(graph.json()["source_generated_at"], estate.json()["generated_at"])
+            self.assertEqual(estate.json()["generated_at"], first)
+            self.assertEqual(graph.json()["release_fabric"]["collector_verified_stages"], 0)
+            self.assertEqual(graph.json()["release_fabric"]["independently_qualified_stages"], 0)
+            self.assertFalse(graph.json()["release_fabric"]["can_deploy"])
+            self.assertEqual(estate.headers["cache-control"], "no-store")
+            self.assertEqual(graph.headers["cache-control"], "no-store")
+            # A new epoch must neither inherit the old source timestamp nor
+            # serve historical privileged evidence.
+            ticks[0] = 60.01
+            renewed_estate = client.get("/api/estate")
+            renewed_graph = client.get("/api/ontology")
+            self.assertEqual(public_builder.call_count, 2)
+            self.assertEqual(renewed_estate.json()["generated_at"], second)
+            self.assertEqual(renewed_graph.json()["source_generated_at"], second)
+            self.assertNotEqual(graph.json()["source_snapshot_sha256"],
+                                renewed_graph.json()["source_snapshot_sha256"])
+            for response in (estate, graph, renewed_estate, renewed_graph):
+                self.assertNotIn("GH_TOKEN", response.text)
+                self.assertNotIn("CLOUDFLARE_API_TOKEN", response.text)
 
     def test_public_snapshot_does_not_claim_zero_repos_or_issues(self):
         result = public_preview.verticals()

@@ -100,8 +100,18 @@ through its authorized deployment path. **This source change does not set
 that flag or deploy the Space.**
 
 In a source-marked public-preview image, the same route—even when
-explicitly enabled—must take `public_preview.estate()`: five UNAVAILABLE
-metadata collectors and zero private API calls. It never substitutes
+explicitly enabled—must take the dedicated, public-only on-demand
+`public_preview.estate()` cache: five UNAVAILABLE metadata collectors and
+zero private API calls. The existing `GET /api/estate` uses the same
+60-second in-memory **public-only** snapshot, so `source_generated_at`
+agrees exactly between graph and estate. It does not reuse a privileged
+cache key or historical data and sends `Cache-Control: no-store`.
+Independent worker or replica clocks may produce distinct snapshots;
+the frontend must reject such mismatches rather than infer alignment.
+The isolated Docker CI includes an explicit enabled-feature test using dummy
+provider tokens; source and ontology must share the same public snapshot.
+No actual environment credential, account setting or Hosted Space variable
+is modified by that test. It never substitutes
 privileged operator observations from environment variables, cached internal
 records, or baked historical snapshots. The new fabric does not change
 `/api/health`, public-preview ingress, source manifests, or the original
