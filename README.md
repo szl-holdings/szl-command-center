@@ -239,6 +239,25 @@ solely to make public dashboard metrics appear green. A green
 The deployed Docker image is explicitly `SZL_COMMAND_CENTER_MODE=public_preview`
 and also contains a source-manifest marker, so an environment override cannot
 silently turn its public HTTP endpoints into a privileged operations console.
+
+**Public ontology snapshot identity:** The `/api/estate` and separately
+admitted `/api/ontology` routes now share one *public-only* 60-second,
+on-demand in-memory snapshot of the five deliberately UNAVAILABLE
+collector envelopes. This cache has no access to or key overlap with the
+privileged collector cache; it never executes private provider reads.
+Both HTTP responses remain `Cache-Control: no-store`. Sharing the exact
+`generated_at` snapshot is necessary for the browser's immutable
+source-to-graph equality check; separately created timestamps would
+otherwise always disagree. Across multiple independent workers or replicas,
+unshared snapshots may legitimately mismatch, in which case the browser
+still fails closed rather than silently promoting an unrelated response.
+No private readiness or release authority is gained.
+
+CI now exercises this exact binding inside the isolated Docker image with
+**dummy** provider credentials and the read-only ontology flag enabled.
+It requires both the public estate and ontology to carry the *same* snapshot
+timestamp while leaving all private collectors UNAVAILABLE. This does not
+enable the feature in the hosted Space or relax any required review.
 The five legacy estate collectors (GitHub organization, Hugging Face account,
 Cloudflare zone, DNS, receipt verifier) and live vertical repository scans
 **are not invoked from public-preview HTTP routes**. The resulting

@@ -464,7 +464,9 @@ test('release fabric never enables public-preview private collectors', async () 
 test('real Python-generated ontology SHA-256 fixture passes the browser checksum gate', async () => {
   const raw = fs.readFileSync(
     path.join(__dirname, 'fixtures/release-fabric-python-golden.v1.json'));
-  assert.equal(createHash('sha256').update(raw).digest('hex'),
+  // Git may check out JSON with CRLF on Windows; pin the canonical LF blob.
+  const canonicalBytes = Buffer.from(raw.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  assert.equal(createHash('sha256').update(canonicalBytes).digest('hex'),
     '9867c97ca5d3247cbd3380044cdbab0e5cb2cc64c394be1b23d8ef0c20c66eaf');
   const graph = JSON.parse(raw);
   assert.equal(graph.source_snapshot_sha256,

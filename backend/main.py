@@ -43,6 +43,15 @@ app = FastAPI(
 )
 
 _response_cache = ResponseCache(CACHE_TTL)
+# Public-only synthetic observations NEVER share a key or cache instance with
+# privileged estate collection. This binds the public estate and its ontology
+# to one exact no-provider snapshot without introducing a new collector.
+_public_preview_cache = ResponseCache(CACHE_TTL)
+
+
+def _public_preview_estate() -> dict:
+    """One bounded, on-demand no-provider snapshot shared by two public routes."""
+    return _public_preview_cache.get("public-preview-only:estate", public_preview.estate)
 
 
 def _cached(key: str, producer):
@@ -108,7 +117,7 @@ def api_estate() -> JSONResponse:
     if public_preview.active():
         # The public research preview cannot run private-provider collectors
         # or serve a retained privately collected/snapshot payload.
-        return JSONResponse(public_preview.estate(),
+        return JSONResponse(_public_preview_estate(),
                             headers={"Cache-Control": "no-store"})
     return _live_or_snapshot("estate", lambda: _cached("estate", _estate))
 
@@ -145,7 +154,7 @@ def api_ontology() -> JSONResponse:
             status_code=503,
             headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
         )
-    source = (public_preview.estate() if public_preview.active()
+    source = (_public_preview_estate() if public_preview.active()
               else _cached("estate", _estate))
     return JSONResponse(
         project_ontology(source),
