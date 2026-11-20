@@ -35,22 +35,51 @@ def _validated(ontology: dict) -> tuple[list, dict, str]:
     nodes, graph = ontology.get("nodes"), ontology.get("release_fabric")
     if not isinstance(nodes, list) or len(nodes) != 6 or not isinstance(graph, dict):
         raise ValueError("SOURCE_GRAPH_UNAVAILABLE")
+    # Validate the exact source projection emitted by backend.ontology.
+    # These hashes are unsigned internal consistency checks, NOT authority.
+    stamp = ontology.get("source_generated_at")
+    if ("source_generated_at" not in ontology
+            or (stamp is not None and
+                (type(stamp) is not str or len(stamp) > 40))):
+        raise ValueError("SOURCE_GENERATED_AT_INVALID")
+    if nodes[0] != {
+        "id": "snapshot:estate",
+        "kind": "snapshot",
+        "claim_scope": "projection_only",
+        "action_authorized": False,
+    }:
+        raise ValueError("SNAPSHOT_NODE_INVALID")
+    fields = {
+        "id", "kind", "label", "truth_state", "reason_code",
+        "observed_at", "evidence_ref_sha256", "claim_scope",
+        "action_authorized",
+    }
+    reasons = {
+        "DIRECT_OBSERVATION", "COLLECTOR_MISSING",
+        "SNAPSHOT_STALE_OR_INVALID", "EVIDENCE_IDENTITY_MISSING",
+        "OBSERVATION_STALE_OR_INVALID", "UPSTREAM_NOT_VERIFIED",
+    }
     seen = {}
-    for node in nodes:
-        if not isinstance(node, dict):
+    for index, source in enumerate(SELECTABLE, start=1):
+        node = nodes[index]
+        if type(node) is not dict or set(node) != fields:
             raise ValueError("SOURCE_NODE_INVALID")
-        name = node.get("id")
-        if name == "snapshot:estate":
-            continue
-        if type(name) is not str or not name.startswith("source:"):
-            raise ValueError("SOURCE_NODE_INVALID")
-        source = name[7:]
         state = node.get("truth_state")
-        if source not in SELECTABLE or type(state) is not str or state not in STATES or source in seen:
+        observed_at = node.get("observed_at")
+        ref_hash = node.get("evidence_ref_sha256")
+        if (node.get("id") != "source:" + source
+                or node.get("kind") != "evidence_source"
+                or node.get("label") != source
+                or type(state) is not str or state not in STATES
+                or node.get("reason_code") not in reasons
+                or node.get("claim_scope") != "collector_observation_only"
+                or node.get("action_authorized") is not False
+                or (observed_at is not None and
+                    (type(observed_at) is not str or len(observed_at) > 40))
+                or (ref_hash is not None and
+                    (type(ref_hash) is not str or not SHA256.fullmatch(ref_hash)))):
             raise ValueError("SOURCE_NODE_INVALID")
         seen[source] = state
-    if set(seen) != set(SELECTABLE):
-        raise ValueError("SOURCE_COVERAGE_INCOMPLETE")
     stages = graph.get("stages")
     edges = graph.get("dependencies")
     if (graph.get("schema") != fabric.SCHEMA
@@ -90,6 +119,18 @@ def _validated(ontology: dict) -> tuple[list, dict, str]:
     body = {k: v for k, v in graph.items() if k != "content_sha256"}
     if _digest(body) != observed_digest:
         raise ValueError("FABRIC_DIGEST_MISMATCH")
+    # Bind the graph to the SAME five observations as its claimed source SHA.
+    # Rehashing only the release_fabric cannot update this independent basis.
+    expected_basis = _digest({
+        "source_generated_at": stamp,
+        "observations": [
+            (node["id"], node["truth_state"],
+             node["observed_at"], node["evidence_ref_sha256"])
+            for node in nodes[1:]
+        ],
+    })
+    if expected_basis != sha:
+        raise ValueError("SOURCE_SNAPSHOT_BASIS_MISMATCH")
     return nodes, graph, sha
 
 
