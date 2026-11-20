@@ -195,6 +195,13 @@ class SnapshotBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SOURCE_NODE_INVALID"):
             evaluate(record)
 
+    def test_unhashable_reason_code_fails_closed_as_validation_error(self):
+        candidate = clean()
+        candidate["nodes"][3]["reason_code"] = ["PRODUCTION_AUTHORIZED"]
+        refingerprint(candidate)
+        with self.assertRaisesRegex(ValueError, "SOURCE_NODE_INVALID"):
+            evaluate(candidate)
+
     def test_valid_rehashed_but_untrusted_basis_is_never_authority(self):
         """Structural self-consistency is weaker than origin authentication."""
         record = clean()
