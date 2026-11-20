@@ -71,7 +71,8 @@ def _validated(ontology: dict) -> tuple[list, dict, str]:
                 or node.get("kind") != "evidence_source"
                 or node.get("label") != source
                 or type(state) is not str or state not in STATES
-                or node.get("reason_code") not in reasons
+                or type(node.get("reason_code")) is not str
+                or node["reason_code"] not in reasons
                 or node.get("claim_scope") != "collector_observation_only"
                 or node.get("action_authorized") is not False
                 or (observed_at is not None and
