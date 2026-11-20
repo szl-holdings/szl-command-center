@@ -19,7 +19,10 @@ FIXED_FILES = frozenset({"Dockerfile", "requirements-space.txt"})
 # Explicit source-only modules must NEVER enter the public Docker bundle.
 # Do not silently ignore these paths in a deployed bundle: verify() refuses
 # their presence even if the manifest omits them.
-LOCAL_ONLY_SOURCE_FILES = frozenset({"backend/lake_operator_bridge.py"})
+LOCAL_ONLY_SOURCE_FILES = frozenset({
+    "backend/lake_operator_bridge.py",
+    "backend/unified_ops.py",
+})
 MAX_MANIFEST_BYTES = 256_000
 MAX_FILE_BYTES = 2_000_000
 MAX_FILES = 1000
