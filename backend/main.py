@@ -33,6 +33,13 @@ from .ontology import project as project_ontology
 from . import release_impact
 from .source_manifest import verify as verify_source_manifest
 from .inference import router as inference_router
+try:
+    # This module is intentionally NOT shipped in the public HF Docker bundle.
+    from .unified_ops import router as unified_operator_router
+except ModuleNotFoundError as missing:
+    if missing.name != f"{__package__}.unified_ops":
+        raise
+    unified_operator_router = None
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 CACHE_TTL = 60
@@ -212,5 +219,7 @@ def index() -> FileResponse:
 
 
 app.include_router(inference_router)
+if unified_operator_router is not None:
+    app.include_router(unified_operator_router)
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -61,6 +61,31 @@ Offline route and rendering checks: install `requirements-dev.txt`, then run
 `python -m unittest discover -s tests -v` and
 `node --test tests/test_snapshot_display.cjs` (Node 20 or newer).
 
+## Local Python unified operator console (source-only)
+
+An additional **Python-rendered frontend and FastAPI backend** now provide a
+source-owned, read-only unified view for `szl-holdings`. The operator surface
+is **disabled by default**; it is local-only, protected by a disposable Basic
+credential and rejects requests received on a non-loopback server socket.
+Its 8-source GitHub/Hugging Face catalog and four independent compute-pool
+rows never infer deployment, runtime authentication, signer authority,
+GPU spend or x402 settlement from public metadata.
+
+- `GET /ops/unified` — Python server-rendered operator dashboard, no JS.
+- `GET /api/ops/unified` — same source/pool observations as JSON.
+- `POST /ops/unified/plan` and `POST /api/ops/unified/plan` — deterministic
+  **HOLD-only**, non-persisted source-pinned job intent; no execution.
+- `POST /api/ops/unified/dispatch` — always **403 HOLD**.
+
+The operator module is explicitly **excluded from the public Hugging Face
+Docker bundle** by `backend/source_manifest.py`, and public-image isolation
+tests prove it cannot be accidentally exposed in the derived app. No public
+preview endpoint, model release, provider secret or workflow is changed.
+See [local runbook, architecture, security and test evidence](
+docs/UNIFIED_STACK_LOCAL_OPERATOR_20261120.md). All real worker
+dispatch, authentication/Access onboarding and production admission
+remain HOLD behind existing source-owner gates.
+
 ## Local Python Lake graph bridge (not a public endpoint)
 
 The **operator-only**, stdlib Python module
