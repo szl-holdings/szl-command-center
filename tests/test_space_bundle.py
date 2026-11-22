@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +24,7 @@ def fixture(root: Path) -> None:
     (root / "backend" / "__init__.py").write_text("# Package\n")
     (root / "backend" / "handler.py").write_text("VALUE = True\n")
     (root / "backend" / "lake_operator_bridge.py").write_text("LOCAL_ONLY = True\n")
+    (root / "backend" / "unified_ops.py").write_text("LOCAL_ONLY = True\n")
     (root / "frontend" / "index.html").write_text("<h1>Observe</h1>\n")
     (root / "Dockerfile").write_text("FROM scratch\n")
     (root / "requirements-space.txt").write_text("fastapi==0.143.2\n")
@@ -53,6 +56,7 @@ class SourceManifestTests(unittest.TestCase):
         self.assertIn(SHA, (self.out / "README.md").read_text())
         self.assertTrue((self.out / "LICENSE").exists())
         self.assertFalse((self.out / "backend" / "lake_operator_bridge.py").exists())
+        self.assertFalse((self.out / "backend" / "unified_ops.py").exists())
         with self.assertRaisesRegex(ManifestError, "OPERATOR_ONLY_PAYLOAD_FORBIDDEN"):
             source_files(self.root)
         self.assertEqual(
@@ -93,7 +97,8 @@ class SourceManifestTests(unittest.TestCase):
         tracked = (
             "Dockerfile", "requirements-space.txt",
             "backend/__init__.py", "backend/handler.py",
-            "backend/lake_operator_bridge.py", "frontend/index.html",
+            "backend/lake_operator_bridge.py", "backend/unified_ops.py",
+            "frontend/index.html",
         )
         def fake_git(root, *args):
             if args == ("status", "--porcelain"):
@@ -113,6 +118,7 @@ class SourceManifestTests(unittest.TestCase):
             selected = git_admission(self.root, SHA)
         self.assertEqual(selected, set(tracked) - LOCAL_ONLY_SOURCE_FILES)
         self.assertNotIn("backend/lake_operator_bridge.py", selected)
+        self.assertNotIn("backend/unified_ops.py", selected)
         report = build_bundle(self.root, self.out, SHA, selected=selected)
         self.assertEqual(report["status"], "SELF_CONSISTENT")
 
@@ -122,16 +128,54 @@ class SourceManifestTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         expected = source_files(root, allow_local_only_source=True)
         self.assertNotIn("backend/lake_operator_bridge.py", expected)
+        self.assertNotIn("backend/unified_ops.py", expected)
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "space"
             report = build_bundle(root, out, SHA, selected=expected)
             self.assertEqual(report["status"], "SELF_CONSISTENT")
             self.assertFalse((out / "backend" / "lake_operator_bridge.py").exists())
+            self.assertFalse((out / "backend" / "unified_ops.py").exists())
             manifest = json.loads((out / "source_manifest.json").read_text())
             self.assertFalse(any(
                 row["path"] == "backend/lake_operator_bridge.py"
                 for row in manifest["files"]
             ))
+
+
+    def test_operator_console_in_public_bundle_is_explicitly_denied(self):
+        self.build()
+        module = self.out / "backend" / "unified_ops.py"
+        self.assertFalse(module.exists())
+        module.write_text("SHOULD_NEVER_SHIP = True\n")
+        report = verify(self.out)
+        self.assertEqual(report["status"], "UNAVAILABLE")
+        self.assertEqual(report["reason_code"], "OPERATOR_ONLY_PAYLOAD_FORBIDDEN")
+
+    def test_canonical_public_bundle_imports_without_operator_module(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = source_files(root, allow_local_only_source=True)
+        with tempfile.TemporaryDirectory() as temp:
+            bundle = Path(temp) / "bundle"
+            result = build_bundle(root, bundle, SHA, selected=selected)
+            self.assertEqual(result["status"], "SELF_CONSISTENT")
+            self.assertFalse((bundle / "backend" / "unified_ops.py").exists())
+            statement = (
+                "from backend import main; "
+                "from backend import public_preview; "
+                "assert public_preview.active(); "
+                "assert main.unified_operator_router is None; "
+                "assert not any(getattr(r, 'path', '').startswith('/ops/unified') "
+                "or getattr(r, 'path', '').startswith('/api/ops/unified') "
+                "for r in main.app.routes); "
+                "print('PUBLIC_CONTAINER_OPERATOR_CODE_EXCLUDED')"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-B", "-c", statement],
+                cwd=str(bundle), capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=20,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("PUBLIC_CONTAINER_OPERATOR_CODE_EXCLUDED", completed.stdout)
 
     def test_invalid_manifest_duplicate_key_fails_closed(self):
         self.build()
