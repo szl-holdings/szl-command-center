@@ -9,6 +9,7 @@ import base64
 import binascii
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from http.client import HTTPException
 from hashlib import sha256
 from hmac import compare_digest
 from html import escape
@@ -109,7 +110,7 @@ def source_row(entry: tuple[str, str, str | None, str]) -> dict:
         else:
             row["source_state"] = "UNKNOWN"
             row["source_reason"] = "PROTECTED_MAIN_IDENTITY_NOT_ESTABLISHED"
-    except (ValueError, OSError, HTTPError, URLError, json.JSONDecodeError):
+    except (ValueError, OSError, HTTPError, URLError, HTTPException, json.JSONDecodeError):
         row["source_reason"] = "GITHUB_PUBLIC_READ_UNAVAILABLE"
     if space:
         row["runtime_reason"] = "PROVIDER_METADATA_NOT_EXECUTION"
@@ -129,7 +130,7 @@ def source_row(entry: tuple[str, str, str | None, str]) -> dict:
             else:
                 row["runtime_state"] = "UNKNOWN"
                 row["runtime_reason"] = "HUB_VISIBILITY_OR_IDENTITY_UNVERIFIED"
-        except (ValueError, OSError, HTTPError, URLError, json.JSONDecodeError):
+        except (ValueError, OSError, HTTPError, URLError, HTTPException, json.JSONDecodeError):
             row["runtime_reason"] = "HUB_PUBLIC_READ_UNAVAILABLE"
     return row
 
@@ -149,8 +150,9 @@ def staging_visibility() -> dict:
             row.update(state="OBSERVED", reason="HUB_PRIVATE_FLAG_ONLY_NOT_ACCESS_DENIAL_PROOF")
         else:
             row.update(state="UNKNOWN", reason="STAGING_HUB_IDENTITY_UNKNOWN")
-    except (ValueError, OSError, HTTPError, URLError, json.JSONDecodeError):
-        pass
+    except (ValueError, OSError, HTTPError, URLError, HTTPException, json.JSONDecodeError):
+        # Preserve the explicit fail-closed default for unreadable public metadata.
+        return row
     return row
 
 
@@ -242,10 +244,10 @@ def _operator_gate(request: Request) -> JSONResponse | None:
         name, password = raw.decode("utf-8").split(":", 1)
     except (ValueError, UnicodeDecodeError, binascii.Error):
         return _challenge()
-    good_user = compare_digest(sha256(name.encode()).digest(),
-                               sha256(user.encode()).digest())
-    good_password = compare_digest(sha256(password.encode()).digest(),
-                                   sha256(secret.encode()).digest())
+    # This transient equality check is not password storage: compare byte strings
+    # directly in constant time rather than applying a fast, unsalted password hash.
+    good_user = compare_digest(name.encode("utf-8"), user.encode("utf-8"))
+    good_password = compare_digest(password.encode("utf-8"), secret.encode("utf-8"))
     if not good_user or not good_password:
         return _challenge()
     return None

@@ -1,6 +1,5 @@
 """Independent, offline admission tests for Python-only operator frontend/backend."""
 import base64
-import json
 import os
 import unittest
 from unittest.mock import patch
@@ -148,6 +147,39 @@ class UnifiedOpsTests(unittest.TestCase):
         self.assertEqual(row["source_state"], "UNKNOWN")
         self.assertFalse(row["production_admitted"])
 
+
+    def test_provider_decoding_failure_stays_unavailable(self):
+        def invalid_utf8(_url):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+        with patch.object(unified_ops, "_public_get", side_effect=invalid_utf8):
+            row = unified_ops.source_row(("Test", "a11oy", "a11oy", "test"))
+            staging = unified_ops.staging_visibility()
+            snapshot = unified_ops.collect_snapshot()
+        self.assertEqual(row["source_state"], "UNAVAILABLE")
+        self.assertEqual(row["runtime_state"], "UNAVAILABLE")
+        self.assertEqual(staging["state"], "UNAVAILABLE")
+        self.assertEqual(snapshot["source_repos_observed"], 0)
+        self.assertEqual(snapshot["status"], "HOLD")
+        self.assertFalse(snapshot["can_dispatch"])
+
+    def test_provider_protocol_failure_stays_unavailable(self):
+        from http.client import BadStatusLine
+
+        with patch.object(unified_ops, "_public_get", side_effect=BadStatusLine("bad")):
+            row = unified_ops.source_row(("Test", "a11oy", "a11oy", "test"))
+            staging = unified_ops.staging_visibility()
+        self.assertEqual(row["source_state"], "UNAVAILABLE")
+        self.assertEqual(row["runtime_state"], "UNAVAILABLE")
+        self.assertEqual(staging["state"], "UNAVAILABLE")
+
+    def test_basic_auth_credentials_are_compared_without_weak_hash(self):
+        with patch.object(unified_ops, "sha256", side_effect=AssertionError(
+            "Password authentication must not use a fast password hash"
+        )), patch.object(unified_ops, "_public_get", side_effect=fixture_source):
+            response = self.client.get("/api/ops/unified", headers=auth())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "HOLD")
 
     def test_staging_public_visibility_is_visible_but_not_authorized(self):
         with patch.object(unified_ops, "_public_get", side_effect=fixture_source):
