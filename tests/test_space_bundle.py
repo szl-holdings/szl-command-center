@@ -182,6 +182,22 @@ class SourceManifestTests(unittest.TestCase):
         (self.out / "source_manifest.json").write_text('{"schema":"a","schema":"b"}')
         self.assertEqual(verify(self.out)["reason_code"], "DUPLICATE_JSON_KEY")
 
+    def test_nonfinite_json_manifest_constants_fail_closed(self):
+        self.build()
+        path = self.out / "source_manifest.json"
+        valid = path.read_text(encoding="utf-8").rstrip()
+        self.assertTrue(valid.endswith("}"))
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                path.write_text(
+                    valid[:-1] + ', "unrecognized_extra": ' + constant + '}',
+                    encoding="utf-8",
+                )
+                result = verify(self.out)
+                self.assertEqual(result["status"], "UNAVAILABLE")
+                self.assertEqual(result["reason_code"], "INVALID_JSON_CONSTANT")
+                self.assertFalse(result["execution_authorized"])
+
     def test_changed_source_manifest_identity_denied(self):
         self.build()
         f = self.out / "source_manifest.json"

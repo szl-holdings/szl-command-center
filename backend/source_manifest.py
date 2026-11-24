@@ -89,6 +89,11 @@ def _unique_pairs(pairs):
     return d
 
 
+
+def _reject_json_constant(value: str) -> None:
+    # RFC 8259 disallows NaN and Infinity; Python's default decoder accepts them.
+    raise ManifestError("INVALID_JSON_CONSTANT")
+
 def verify(root: Path) -> dict:
     """Return a bounded, secret-free state; do not expose entire file bytes."""
     root = Path(root)
@@ -113,7 +118,11 @@ def verify(root: Path) -> dict:
         raw = manifest.read_bytes()
         if len(raw) > MAX_MANIFEST_BYTES:
             raise ManifestError("MANIFEST_TOO_LARGE")
-        doc = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_pairs)
+        doc = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_pairs,
+            parse_constant=_reject_json_constant,
+        )
         if (type(doc) is not dict or doc.get("schema") != SCHEMA
                 or doc.get("source_repository") != SOURCE_REPO
                 or type(doc.get("source_revision")) is not str
