@@ -1,0 +1,24 @@
+{
+ "metadata": {
+  "repo_name": "szl-command-center",
+  "last_audit_date": "2026-11-25",
+  "loop_level": 1
+ },
+ "estate_context": {
+  "purpose_domain": "governed business observability across the SZL estate",
+  "baseline_commit": "5d158141953b9e6ec7021e3cf8ae20b86471250d",
+  "leader_profiles": [
+   {
+    "name": "grafana/grafana",
+    "url": "https://github.com/grafana/grafana",
+    "checked_date": "2026-11-25"
+   }
+  ]
+ },
+ "evidence_index": {
+  "publications": [],
+  "gap_register": [],
+  "prioritized_changes": []
+ },
+ "execution_trace": {}
+}
