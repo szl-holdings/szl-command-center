@@ -212,6 +212,10 @@ def api_source_manifest() -> JSONResponse:
 def api_health() -> dict:
     return {"status": "ok", "at": utc_now()}
 
+\n@app.get("/healthz")\ndef healthz() -> dict:
+    """Platform liveness alias for the canonical health response."""
+    return api_health()
+
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
