@@ -213,6 +213,14 @@ def api_health() -> dict:
     return {"status": "ok", "at": utc_now()}
 
 
+@app.get("/healthz")
+def healthz() -> dict:
+    """Platform liveness alias for the canonical health response."""
+    return api_health()
+
+
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
